@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Field mushroom map</title>
+  <meta name="description" content="Where weather has suited the field mushroom (Agaricus campestris) on pasture in Skåne, today and the next 10 days.">
+  <meta name="theme-color" content="#2f4a2b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Champinjon">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <div class="map-wrap">
+      <div id="map" role="application" aria-label="Map of pasture coloured by suitability"></div>
+      <header class="topbar">
+        <div class="brand">
+          <img src="icons/favicon-32.png" alt="" width="22" height="22">
+          <span>Field mushroom · <span id="region">Skåne</span></span>
+        </div>
+        <div class="actions">
+          <button id="locate" class="icon-btn" type="button" aria-label="Show my location" title="Show my location">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12H5M19 12h3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+          <button id="info" class="icon-btn" type="button" aria-label="About this map" title="About this map">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 10.5v6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.3" r="1.3" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </header>
+      <div id="banner" class="banner" role="status" hidden></div>
+      <div id="zoom-hint" class="zoom-hint" hidden>Zoom in to see individual pastures</div>
+    </div>
+
+    <section class="sheet" aria-label="Day and legend">
+      <div class="day-row">
+        <button id="prev" class="step" type="button" aria-label="Previous day">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="day-label">
+          <div id="day-name" class="day-name">Loading…</div>
+          <div id="day-note" class="muted small"></div>
+        </div>
+        <button id="next" class="step" type="button" aria-label="Next day">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <input id="day" type="range" min="0" max="10" step="1" value="0" aria-label="Day">
+      <div id="ticks" class="ticks" aria-hidden="true"></div>
+      <div class="legend" aria-label="Legend">
+        <span class="legend-title small muted">Suitability</span>
+        <span class="key"><i class="sw sw-zero"></i>0</span>
+        <span class="key"><i class="sw" style="--c:#e98937;--s:#d55d0d"></i>1–24</span>
+        <span class="key"><i class="sw" style="--c:#d55d0d;--s:#b53700"></i>25–49</span>
+        <span class="key"><i class="sw" style="--c:#b53700;--s:#861f12"></i>50–74</span>
+        <span class="key"><i class="sw" style="--c:#861f12;--s:#5c150c"></i>75–100 %</span>
+        <span class="key"><i class="sw sw-none"></i>no score</span>
+      </div>
+      <div id="status" class="status muted small">Loading data…</div>
+    </section>
+  </main>
+
+  <dialog id="about" aria-labelledby="about-title">
+    <form method="dialog" class="about-head">
+      <h2 id="about-title">About this map</h2>
+      <button class="icon-btn" value="close" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </form>
+    <div class="about-body">
+      <p>Coloured areas are permanent pastures where recent and forecast weather has suited the
+        <em>field mushroom</em> (<em>Agaricus campestris</em>). Pick a day with the slider: the score for a day
+        uses the five days ending on that day.</p>
+      <h3>How the score works</h3>
+      <ul id="model-list"></ul>
+      <p class="muted small">The score is a relative index, not a probability. Weather is calculated for a grid of
+        roughly 5&nbsp;km squares, so neighbouring pastures share a score. "Past" days are weather-model data, not
+        station measurements. Rain forecasts more than about five days ahead are uncertain.</p>
+      <h3>Before you pick</h3>
+      <p>Field mushrooms can be confused with toxic species, including the yellow-staining mushroom
+        (<em>Agaricus xanthodermus</em>) and deadly white amanitas. Only eat mushrooms you have identified with certainty.</p>
+      <p>Pastures are private land. Follow allemansrätten: keep your distance from grazing animals, close gates
+        behind you, and stay out of gardens and fields with crops.</p>
+      <h3>Data</h3>
+      <ul id="data-list"></ul>
+      <p class="muted small">Source code: <a href="https://github.com/isakwadso/gis-tool" rel="noopener">github.com/isakwadso/gis-tool</a></p>
+    </div>
+  </dialog>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

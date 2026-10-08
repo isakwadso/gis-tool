@@ -1,0 +1,6 @@
+# Written by the publish workflow on every run, never committed
+site/data/scores.json
+
+__pycache__/
+*.pyc
+.DS_Store

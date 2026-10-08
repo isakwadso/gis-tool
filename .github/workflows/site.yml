@@ -1,0 +1,95 @@
+name: Forecast and publish
+
+# Fetches weather for every pasture grid cell, computes the scores for today and
+# the next 10 days, and publishes the site to GitHub Pages. Runs twice a day,
+# after the pasture layer is rebuilt, when the site changes, or manually.
+
+on:
+  schedule:
+    - cron: "52 3 * * *"    # 05:52 Swedish summer time / 04:52 winter time
+    - cron: "52 14 * * *"   # afternoon refresh with newer forecasts
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Build pasture layer"]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - site/**
+      - scripts/build_scores.py
+      - scripts/model.py
+      - scripts/test_model.py
+      - config.json
+      - .github/workflows/site.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Test the scoring model
+        run: python -m unittest discover -s scripts -p "test_*.py"
+
+      - name: Fetch weather and compute scores
+        run: python scripts/build_scores.py
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment comes from this workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
+
+  # GitHub switches off scheduled workflows in public repositories after 60 days
+  # without repository activity. This makes a tiny commit when the repo has been
+  # quiet for 50 days, so the daily schedule keeps running between seasons.
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Commit if the repository has been quiet for 50 days
+        run: |
+          last=$(git log -1 --format=%ct)
+          age_days=$(( ($(date +%s) - last) / 86400 ))
+          echo "Last commit was ${age_days} days ago."
+          if [ "$age_days" -lt 50 ]; then exit 0; fi
+          date -u +%Y-%m-%dT%H:%M:%SZ > .github/keepalive
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/keepalive
+          git commit -m "Keep scheduled workflow active"
+          git push origin HEAD:main
