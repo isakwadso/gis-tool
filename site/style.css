@@ -10,7 +10,7 @@
   --btn: #f2f3f0;
   --btn-hover: #e6e8e3;
   --shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 4px 14px rgba(0, 0, 0, .10);
-  --zero-fill: #c4c4bf;
+  --zero-fill: #bebebb;
   --zero-stroke: #6f6f6b;
   --none-fill: #bdbdb9;
   --none-stroke: #8a8a86;
@@ -52,6 +52,10 @@ button { font: inherit; color: inherit; }
 
 /* Grey base map so the orange scale stands out and water does not read as data */
 .basemap { filter: grayscale(1) contrast(.92) brightness(1.04); }
+/* Second copy of the tiles above the data: only near-black ink (place names, dark lines)
+   survives the filter, and multiply makes the remaining white transparent. */
+.leaflet-labels-pane { z-index: 450; pointer-events: none; mix-blend-mode: multiply; }
+.labels-ink { filter: grayscale(1) brightness(1.25) contrast(3.2); }
 
 .topbar {
   position: absolute; z-index: 1000; top: 0; left: 0; right: 0;

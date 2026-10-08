@@ -3,12 +3,17 @@
 (() => {
   'use strict';
 
-  // Orange single-hue ramp, light -> dark, validated against the grey base map.
-  const RAMP = ['#e98937', '#d55d0d', '#b53700', '#861f12'];
-  const RAMP_STROKE = ['#d55d0d', '#b53700', '#861f12', '#5c150c'];
+  // Single-hue orange ramp, light -> dark. Fills are drawn at FILL_OPACITY so roads and
+  // place names show through. RAMP_SEEN is each fill blended over the grey base map:
+  // that is what the eye sees, what the legend shows, and what was validated
+  // (monotone lightness, visible steps, lightest step >= 2:1 against the map).
+  const FILL_OPACITY = 0.7;
+  const RAMP = ['#d06203', '#aa4603', '#852a00', '#5e1501'];
+  const RAMP_SEEN = ['#d88a47', '#bd7747', '#a36345', '#885546'];
+  const RAMP_STROKE = ['#aa4603', '#852a00', '#5e1501', '#3d0d00'];
   const LABELS = ['Low', 'Fair', 'Good', 'Very good'];
-  const ZERO = { fill: '#c4c4bf', stroke: '#6f6f6b', label: 'Not suitable' };
-  const NONE = { fill: '#bdbdb9', stroke: '#8a8a86', label: 'No score' };
+  const ZERO = { fill: '#acaca7', seen: '#bebebb', stroke: '#6f6f6b', label: 'Not suitable' };
+  const NONE = { fill: '#bdbdb9', seen: '#dcdcda', stroke: '#8a8a86', label: 'No score' };
   const PASTURE_MIN_ZOOM = 12;
   const TZ = 'Europe/Stockholm';
 
@@ -36,7 +41,7 @@
     const b = bin(s);
     if (b === -2) return NONE;
     if (b === -1) return ZERO;
-    return { fill: RAMP[b], stroke: RAMP_STROKE[b], label: LABELS[b] };
+    return { fill: RAMP[b], seen: RAMP_SEEN[b], stroke: RAMP_STROKE[b], label: LABELS[b] };
   }
   function cellData(cid, day) {
     const c = state.scores && state.scores.cells && state.scores.cells[cid];
@@ -81,10 +86,16 @@
   // ---------- map ----------
   const map = L.map('map', { preferCanvas: true, minZoom: 6, maxZoom: 18, zoomSnap: 0.5 });
   const renderer = L.canvas({ padding: 0.4, tolerance: 6 });
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  const OSM = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  L.tileLayer(OSM, {
     maxZoom: 19, className: 'basemap',
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
+  // Place names on top of the coloured squares and pastures: the same tiles again (served
+  // from the browser cache), filtered so only near-black ink remains and blended with
+  // "multiply", which leaves the white parts invisible. See .labels-ink in style.css.
+  map.createPane('labels');
+  L.tileLayer(OSM, { maxZoom: 19, pane: 'labels', className: 'labels-ink' }).addTo(map);
   map.attributionControl.setPrefix(false);
   map.attributionControl.addAttribution('Weather <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0)');
   map.attributionControl.addAttribution('Pasture © <a href="https://jordbruksverket.se/">Jordbruksverket</a>');
@@ -94,8 +105,8 @@
   function cellStyle(cid) {
     const { s } = cellData(cid, state.day);
     const lk = look(s);
-    return { renderer, color: '#ffffff', weight: 1, opacity: 0.9, fillColor: lk.fill,
-      fillOpacity: s == null ? 0.45 : 0.85, dashArray: null };
+    return { renderer, color: '#ffffff', weight: 0.8, opacity: 0.55, fillColor: lk.fill,
+      fillOpacity: s == null ? 0.3 : FILL_OPACITY, dashArray: null };
   }
   function buildCells() {
     const group = L.layerGroup();
@@ -115,7 +126,7 @@
     const { s } = cellData(cid, state.day);
     const lk = look(s);
     return { renderer, color: lk.stroke, weight: 1.5, opacity: 1, fillColor: lk.fill,
-      fillOpacity: s == null ? 0.3 : 0.85, dashArray: s == null ? '3 3' : null };
+      fillOpacity: s == null ? 0.3 : FILL_OPACITY, dashArray: s == null ? '3 3' : null };
   }
   function decodeRing(r, q) {
     let x = r[0], y = r[1];
@@ -178,7 +189,7 @@
     const lk = look(s);
     const score = s == null ? '—' : `${s}%`;
     const fmt = (v, unit) => (v == null ? '—' : `${v} ${unit}`);
-    return `<div class="pop-title"><i class="sw" style="--c:${lk.fill};--s:${lk.stroke}"></i>${esc(lk.label)} · ${score}</div>
+    return `<div class="pop-title"><i class="sw" style="--c:${lk.seen};--s:${lk.stroke}"></i>${esc(lk.label)} · ${score}</div>
       <div class="pop-date">${esc(dayName(state.day))}</div>
       <table>
         <tr><td>Rain, 5 days</td><td>${fmt(r, 'mm')}</td></tr>
