@@ -1,8 +1,8 @@
 /* Offline support: keeps the app and the last downloaded data so the map still
    opens in the field without coverage. Map tiles are left to the browser cache. */
-const CACHE = 'gis-tool-v1';
+const CACHE = 'gis-tool-v3';
 const SHELL = [
-  './', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
+  './', 'index.html', 'style.css?v=3', 'app.js?v=3', 'manifest.webmanifest',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/favicon-32.png', 'icons/icon-192.png',
 ];

@@ -93,9 +93,14 @@
   }).addTo(map);
   // Place names on top of the coloured squares and pastures: the same tiles again (served
   // from the browser cache), filtered so only near-black ink remains and blended with
-  // "multiply", which leaves the white parts invisible. See .labels-ink in style.css.
-  map.createPane('labels');
-  L.tileLayer(OSM, { maxZoom: 19, pane: 'labels', className: 'labels-ink' }).addTo(map);
+  // "multiply", which leaves the white parts invisible. Styled here rather than in
+  // style.css so the layer can never appear unfiltered over the data.
+  const labelsPane = map.createPane('labels');
+  Object.assign(labelsPane.style, {
+    zIndex: '450', pointerEvents: 'none', mixBlendMode: 'multiply',
+    filter: 'grayscale(1) brightness(1.25) contrast(3.2)',
+  });
+  L.tileLayer(OSM, { maxZoom: 19, pane: 'labels' }).addTo(map);
   map.attributionControl.setPrefix(false);
   map.attributionControl.addAttribution('Weather <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0)');
   map.attributionControl.addAttribution('Pasture © <a href="https://jordbruksverket.se/">Jordbruksverket</a>');
