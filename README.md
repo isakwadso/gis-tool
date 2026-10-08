@@ -12,7 +12,7 @@ downloaded data).
 
 ```
 Jordbruksverket WFS ──(yearly)──► Build pasture layer ──► site/data/pasture/*.json (committed)
-                                                          site/data/cells.json
+OSM Overpass API ────(yearly)──┘                         site/data/cells.json, places.json
 Open-Meteo API ──(twice daily)──► Forecast and publish ──► site/data/scores.json ──► GitHub Pages
 ```
 
@@ -20,6 +20,9 @@ Open-Meteo API ──(twice daily)──► Forecast and publish ──► site/
    downloads the latest farm blocks (*jordbruksblock*) of type *Bete* for Skåne
    from Jordbruksverket's public WFS, simplifies the outlines to ~1.5 m, groups
    them into small files, and assigns each block to a ~5 km weather grid square.
+   The same workflow fetches city, town and village names for the region from
+   OpenStreetMap (`scripts/build_places.py`); the page draws them on top of the
+   coloured squares so you can see where you are when zoomed out.
 2. **Scores** (`scripts/build_scores.py`, workflow *Forecast and publish*): asks
    Open-Meteo for daily rain, mean and minimum temperature for the past 4 days and
    the next 11 days at every grid square that contains pasture, then scores each
@@ -69,7 +72,7 @@ Local test: `python -m unittest discover -s scripts`
 - Weather: [Open-Meteo.com](https://open-meteo.com/), CC BY 4.0. The scores are derived from it.
 - Pasture: [Jordbruksverket](https://jordbruksverket.se/e-tjanster-databaser-och-appar/e-tjanster-och-databaser-stod/kartor-och-gis),
   jordbruksblock (årslager), open data via their INSPIRE WFS.
-- Base map: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+- Base map and place names: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL).
 - Map library: [Leaflet](https://leafletjs.com/) 1.9.4 (BSD-2-Clause), included in `site/vendor/`.
 
 ## Safety

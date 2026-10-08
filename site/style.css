@@ -52,7 +52,17 @@ button { font: inherit; color: inherit; }
 
 /* Grey base map so the orange scale stands out and water does not read as data */
 .basemap { filter: grayscale(1) contrast(.92) brightness(1.04); }
-/* The place-name layer above the data is styled in app.js (labelsPane). */
+/* Place names drawn above the coloured squares (overview zoom levels only) */
+.place { pointer-events: none; }
+.place span {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
+  white-space: nowrap; color: #1f2420;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff, 0 0 4px #fff;
+}
+.place-0 span { font: 700 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.place-1 span { font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.place-2 span { font: 500 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #3a3f3b; }
 
 .topbar {
   position: absolute; z-index: 1000; top: 0; left: 0; right: 0;

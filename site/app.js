@@ -3,8 +3,8 @@
 (() => {
   'use strict';
 
-  // Single-hue orange ramp, light -> dark. Fills are drawn at FILL_OPACITY so roads and
-  // place names show through. RAMP_SEEN is each fill blended over the grey base map:
+  // Single-hue orange ramp, light -> dark. Fills are drawn at FILL_OPACITY so roads show
+  // through (place names are drawn on top as text, see "place names" below). RAMP_SEEN is each fill blended over the grey base map:
   // that is what the eye sees, what the legend shows, and what was validated
   // (monotone lightness, visible steps, lightest step >= 2:1 against the map).
   const FILL_OPACITY = 0.7;
@@ -91,20 +91,58 @@
     maxZoom: 19, className: 'basemap',
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
-  // Place names on top of the coloured squares and pastures: the same tiles again (served
-  // from the browser cache), filtered so only near-black ink remains and blended with
-  // "multiply", which leaves the white parts invisible. Styled here rather than in
-  // style.css so the layer can never appear unfiltered over the data.
-  const labelsPane = map.createPane('labels');
-  Object.assign(labelsPane.style, {
-    zIndex: '450', pointerEvents: 'none', mixBlendMode: 'multiply',
-    filter: 'grayscale(1) brightness(1.25) contrast(3.2)',
-  });
-  L.tileLayer(OSM, { maxZoom: 19, pane: 'labels' }).addTo(map);
   map.attributionControl.setPrefix(false);
   map.attributionControl.addAttribution('Weather <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0)');
   map.attributionControl.addAttribution('Pasture © <a href="https://jordbruksverket.se/">Jordbruksverket</a>');
   map.setView([55.95, 13.55], 8);
+
+  // ---------- place names (overview) ----------
+  // Plain text labels above the coloured squares, so towns stay readable on every browser.
+  // Bigger places first; a label is skipped if it would overlap one already shown.
+  const LABEL_MIN_ZOOM = [6, 8, 9.5];        // city, town, village
+  const LABEL_FONT = ['700 14px', '600 13px', '500 12px'];
+  const placesPane = map.createPane('places');
+  placesPane.style.zIndex = '450';
+  placesPane.style.pointerEvents = 'none';
+  const placeLayer = L.layerGroup();
+  let places = [];
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  const FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+  function initPlaces(data) {
+    places = (data && data.places ? data.places : []).map(([name, rank, lat, lon]) => {
+      measureCtx.font = `${LABEL_FONT[rank]} ${FONT_FAMILY}`;
+      const w = measureCtx.measureText(name).width + 6;
+      const marker = L.marker([lat, lon], {
+        pane: 'places', interactive: false, keyboard: false,
+        icon: L.divIcon({ className: `place place-${rank}`, html: `<span>${esc(name)}</span>`, iconSize: [0, 0] }),
+      });
+      return { rank, lat, lon, w, h: rank === 0 ? 18 : 16, marker };
+    });
+    map.on('zoomend moveend', layoutPlaces);
+    layoutPlaces();
+  }
+  function layoutPlaces() {
+    const z = map.getZoom();
+    if (!places.length || z >= PASTURE_MIN_ZOOM) {
+      if (map.hasLayer(placeLayer)) map.removeLayer(placeLayer);
+      return;
+    }
+    const view = map.getBounds().pad(0.1);
+    const taken = [];
+    const show = new Set();
+    for (const p of places) {
+      if (z < LABEL_MIN_ZOOM[p.rank] || !view.contains([p.lat, p.lon])) continue;
+      const c = map.latLngToContainerPoint([p.lat, p.lon]);
+      const box = [c.x - p.w / 2 - 4, c.y - p.h / 2 - 2, c.x + p.w / 2 + 4, c.y + p.h / 2 + 2];
+      if (taken.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
+      taken.push(box);
+      show.add(p.marker);
+    }
+    placeLayer.eachLayer((m) => { if (!show.has(m)) placeLayer.removeLayer(m); });
+    show.forEach((m) => { if (!placeLayer.hasLayer(m)) placeLayer.addLayer(m); });
+    if (!map.hasLayer(placeLayer)) map.addLayer(placeLayer);
+  }
 
   // ---------- weather cells (overview) ----------
   function cellStyle(cid) {
@@ -315,7 +353,8 @@
       if (e.key === 'ArrowRight') setDay(state.day + 1);
     });
 
-    const [cellsRes, scoresRes] = await Promise.allSettled([getJSON('data/cells.json'), getJSON('data/scores.json')]);
+    const [cellsRes, scoresRes, placesRes] = await Promise.allSettled(
+      [getJSON('data/cells.json'), getJSON('data/scores.json'), getJSON('data/places.json')]);
     const status = $('status');
     if (cellsRes.status !== 'fulfilled' || !cellsRes.value.cells || !cellsRes.value.cells.length) {
       $('day-name').textContent = 'No pasture data yet';
@@ -344,6 +383,7 @@
     map.fitBounds(L.latLngBounds(state.cells.cells.map((r) => cellBounds(r[0]).getCenter())).pad(0.05));
     map.on('zoomend moveend', refreshPastures);
     refreshPastures();
+    if (placesRes.status === 'fulfilled') initPlaces(placesRes.value);
     setDay(min);
 
     const parts = [];
