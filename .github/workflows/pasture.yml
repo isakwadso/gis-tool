@@ -44,13 +44,17 @@ jobs:
         run: python scripts/build_pasture.py
 
       - name: Build place names
+        # Overpass is a shared free service; if it is busy, keep last year's names
+        # rather than holding back the pasture update.
+        continue-on-error: true
         run: python scripts/build_places.py
 
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site/data/cells.json site/data/pasture site/data/places.json
+          git add site/data/cells.json site/data/pasture
+          if [ -f site/data/places.json ]; then git add site/data/places.json; fi
           if git diff --cached --quiet; then
             echo "Pasture layer unchanged."
             exit 0

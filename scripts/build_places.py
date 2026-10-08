@@ -26,7 +26,11 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"]
+ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
 USER_AGENT = "gis-tool place labels (https://github.com/isakwadso/gis-tool)"
 RANK = {"city": 0, "town": 1, "village": 2}
 
@@ -38,20 +42,38 @@ node(area.a)["place"~"^(city|town|village)$"]["name"];
 out tags qt;"""
 
 
+def note(level: str, msg: str) -> None:
+    """Print a line GitHub Actions turns into an annotation (visible without the full log)."""
+    print(f"::{level}::{msg}", flush=True)
+
+
 def download(iso_code: str) -> dict:
     body = urllib.parse.urlencode({"data": query(iso_code)}).encode()
-    last = None
+    problems = []
     for url in ENDPOINTS:
-        for attempt in range(3):
+        host = urllib.parse.urlparse(url).netloc
+        for attempt in range(2):
+            if attempt:
+                time.sleep(45)
             try:
                 req = urllib.request.Request(url, data=body, headers={"User-Agent": USER_AGENT})
                 with urllib.request.urlopen(req, timeout=180) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-                last = exc
-                print(f"  {url} failed ({exc}); retrying", flush=True)
-                time.sleep(30 * (attempt + 1))
-    raise RuntimeError(f"Overpass request failed: {last}")
+                    text = resp.read().decode("utf-8", "replace")
+                data = json.loads(text)
+            except urllib.error.HTTPError as exc:
+                problems.append(f"{host}: HTTP {exc.code} {exc.read()[:150]!r}")
+                continue
+            except Exception as exc:  # network errors, bad JSON, ...
+                problems.append(f"{host}: {type(exc).__name__}: {str(exc)[:150]}")
+                continue
+            n = len(data.get("elements", []))
+            if n >= 5:
+                print(f"  {host}: {n} elements", flush=True)
+                return data
+            # Overpass reports rate limits and timeouts as HTTP 200 with a "remark".
+            problems.append(f"{host}: {n} elements, remark: {str(data.get('remark', ''))[:200]}")
+    note("warning", "Place names not updated. " + " | ".join(problems))
+    raise RuntimeError("all Overpass endpoints failed")
 
 
 def population(tags: dict) -> int:
@@ -86,16 +108,21 @@ def main() -> int:
     args = ap.parse_args()
     cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
     iso_code = cfg["region"]["iso3166_2"]
-    data = (json.loads(args.from_file.read_text(encoding="utf-8")) if args.from_file
-            else download(iso_code))
+    if args.from_file:
+        data = json.loads(args.from_file.read_text(encoding="utf-8"))
+    else:
+        try:
+            data = download(iso_code)
+        except RuntimeError:
+            return 1
     out = build(data, iso_code)
     if len(out["places"]) < 5:
-        print(f"Only {len(out['places'])} places returned; keeping the existing file.", file=sys.stderr)
+        note("warning", f"Only {len(out['places'])} places found; keeping the existing file.")
         return 1
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     counts = [sum(1 for p in out["places"] if p[1] == r) for r in range(3)]
-    print(f"Wrote {len(out['places'])} places (cities {counts[0]}, towns {counts[1]}, villages {counts[2]})")
+    note("notice", f"Wrote {len(out['places'])} places (cities {counts[0]}, towns {counts[1]}, villages {counts[2]})")
     return 0
 
 
