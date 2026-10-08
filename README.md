@@ -22,7 +22,9 @@ Open-Meteo API ──(twice daily)──► Forecast and publish ──► site/
    them into small files, and assigns each block to a ~5 km weather grid square.
    The same workflow fetches city, town and village names for the region from
    OpenStreetMap (`scripts/build_places.py`); the page draws them on top of the
-   coloured squares so you can see where you are when zoomed out.
+   coloured squares so you can see where you are when zoomed out. The public
+   Overpass servers often refuse requests from GitHub's machines; when that
+   happens the existing `site/data/places.json` (fetched 8 Oct 2026) is kept.
 2. **Scores** (`scripts/build_scores.py`, workflow *Forecast and publish*): asks
    Open-Meteo for daily rain, mean and minimum temperature for the past 4 days and
    the next 11 days at every grid square that contains pasture, then scores each
