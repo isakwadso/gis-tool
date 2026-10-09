@@ -42,14 +42,22 @@ jobs:
           node-version: "22"
 
       - name: Install Playwright with WebKit and Chromium
+        working-directory: tools
         run: |
-          npm install --prefix tools --no-save --no-package-lock playwright@1.63.0
-          npx --prefix tools playwright install --with-deps webkit chromium
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps webkit chromium
 
       - name: Take screenshots
-        run: node tools/screenshot.mjs "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" shots
+        working-directory: tools
+        run: |
+          mkdir -p ../shots
+          node screenshot.mjs "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" ../shots 2>&1 | tee ../shots/run.txt
+          { echo '```'; cat ../shots/run.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if grep -q "FAILED" ../shots/run.txt; then exit 1; fi
 
       - name: Push to the screenshots branch
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
