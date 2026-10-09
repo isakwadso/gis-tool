@@ -1,0 +1,60 @@
+name: Screenshots
+
+# Renders the live site in WebKit (as on an iPhone) and Chromium and pushes the
+# images to the "screenshots" branch. Runs when this tool changes, after a
+# publish triggered by a commit whose message contains [screenshots], or manually.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tools/screenshot.mjs
+      - .github/workflows/screenshots.yml
+  workflow_run:
+    workflows: ["Forecast and publish"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screenshots
+  cancel-in-progress: true
+
+jobs:
+  shoot:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       contains(github.event.workflow_run.head_commit.message, '[screenshots]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # to push the screenshots branch
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install Playwright with WebKit and Chromium
+        run: |
+          npm install --prefix tools --no-save --no-package-lock playwright@1.63.0
+          npx --prefix tools playwright install --with-deps webkit chromium
+
+      - name: Take screenshots
+        run: node tools/screenshot.mjs "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" shots
+
+      - name: Push to the screenshots branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan screenshots
+          git rm -r -q --cached .
+          git add -f shots
+          git commit -q -m "Screenshots of ${GITHUB_SHA::7}"
+          git push -f origin screenshots
