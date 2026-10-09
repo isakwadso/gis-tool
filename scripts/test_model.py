@@ -11,8 +11,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_scores  # noqa: E402
 from model import rain_factor, score_window, temp_factor  # noqa: E402
 
-CFG = json.loads((Path(__file__).resolve().parent.parent / "config.json").read_text(encoding="utf-8"))
-MODEL = CFG["model"]
+CONFIG = json.loads((Path(__file__).resolve().parent.parent / "config.json").read_text(encoding="utf-8"))
+# The tests use fixed thresholds so they keep checking the logic when config.json is tuned.
+MODEL = {
+    "window_days": 5, "rain_mm": [5, 20], "temp_c": [0, 5, 12, 15],
+    "frost_below_c": 0.0, "frost_penalty": 0.25, "season_months": [7, 8, 9, 10, 11],
+}
+CFG = {**CONFIG, "model": MODEL}
+
+
+class ConfigTests(unittest.TestCase):
+    def test_config_is_sane(self):
+        m = CONFIG["model"]
+        self.assertEqual(set(m), set(MODEL))
+        self.assertLess(m["rain_mm"][0], m["rain_mm"][1])
+        self.assertEqual(sorted(m["temp_c"]), m["temp_c"])
+        self.assertTrue(set(m["season_months"]) <= set(range(1, 13)))
+
+    def test_rain_scale_from_config(self):
+        lo, hi = CONFIG["model"]["rain_mm"]
+        self.assertEqual(rain_factor(lo, CONFIG["model"]["rain_mm"]), 0)
+        self.assertAlmostEqual(rain_factor((lo + hi) / 2, CONFIG["model"]["rain_mm"]), 0.5)
+        self.assertEqual(rain_factor(hi, CONFIG["model"]["rain_mm"]), 1)
 
 
 class FactorTests(unittest.TestCase):

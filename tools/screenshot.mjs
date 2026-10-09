@@ -33,7 +33,7 @@ for (const [name, engine] of Object.entries({ webkit, chromium })) {
     await pause(4000);
     await page.screenshot({ path: `${out}/${name}-1-overview.png` });
 
-    await page.evaluate(() => window.__map.setView([55.70, 13.19], 10, { animate: false }));
+    await page.evaluate(() => { window.__map.setView([55.70, 13.19], 10, { animate: false }); });
     await pause(4000);
     await page.screenshot({ path: `${out}/${name}-2-lund-today.png` });
 
@@ -41,7 +41,7 @@ for (const [name, engine] of Object.entries({ webkit, chromium })) {
     await pause(1500);
     await page.screenshot({ path: `${out}/${name}-3-lund-day3.png` });
 
-    await page.evaluate(() => window.__map.setView([55.738, 13.245], 14, { animate: false }));
+    await page.evaluate(() => { window.__map.setView([55.738, 13.245], 14, { animate: false }); });
     await pause(5000);
     await page.screenshot({ path: `${out}/${name}-4-pastures-day3.png` });
 

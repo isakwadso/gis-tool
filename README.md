@@ -13,7 +13,7 @@ downloaded data).
 ```
 Jordbruksverket WFS ──(yearly)──► Build pasture layer ──► site/data/pasture/*.json (committed)
 OSM Overpass API ────(yearly)──┘                         site/data/cells.json, places.json
-Open-Meteo API ──(twice daily)──► Forecast and publish ──► site/data/scores.json ──► GitHub Pages
+Open-Meteo API ──(every 3 h)───► Forecast and publish ──► site/data/scores.json ──► GitHub Pages
 ```
 
 1. **Pasture layer** (`scripts/build_pasture.py`, workflow *Build pasture layer*):
@@ -38,7 +38,7 @@ For a day D the window is the 5 days ending on D.
 
 | Part | Rule |
 |---|---|
-| Rain | Window total: 0 at ≤ 5 mm, rising linearly to 1 at ≥ 20 mm |
+| Rain | Window total: 0 at ≤ 5 mm, rising linearly to 1 at ≥ 50 mm |
 | Temperature | Window mean of daily mean: 0 at ≤ 0 °C, rising to 1 at 5 °C, 1 up to 12 °C, falling to 0 at 15 °C, 0 above |
 | Frost | Each day with minimum below 0 °C subtracts 0.25 |
 | Score | clamp(rain × temperature − frost, 0, 1), shown as 0–100 |

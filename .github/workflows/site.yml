@@ -1,13 +1,14 @@
 name: Forecast and publish
 
 # Fetches weather for every pasture grid cell, computes the scores for today and
-# the next 10 days, and publishes the site to GitHub Pages. Runs twice a day,
+# the next 10 days, and publishes the site to GitHub Pages. Runs every 3 hours,
 # after the pasture layer is rebuilt, when the site changes, or manually.
 
 on:
   schedule:
-    - cron: "52 3 * * *"    # 05:52 Swedish summer time / 04:52 winter time
-    - cron: "52 14 * * *"   # afternoon refresh with newer forecasts
+    # Every 3 hours (02:23, 05:23, 08:23 ... Swedish summer time). GitHub often starts
+    # scheduled runs late, sometimes by hours, so frequent runs keep the data fresh.
+    - cron: "23 */3 * * *"
   workflow_dispatch:
   workflow_run:
     workflows: ["Build pasture layer"]
