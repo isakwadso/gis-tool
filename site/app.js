@@ -247,8 +247,12 @@
         <tr><td>Rain, weighted 10 days</td><td>${fmt(r, 'mm')}</td></tr>
         <tr><td>Mean temperature, 5 days</td><td>${fmt(t, '°C')}</td></tr>
         <tr><td>Drying, 5 days</td><td>${d == null ? '—' : d === 0 ? 'none' : `−${d}%`}</td></tr>
-        <tr><td>Frost nights</td><td>${f == null ? '—' : f}</td></tr>
+        <tr><td>Frost nights</td><td>${f == null ? '—' : f}</td></tr>${uncertaintyRow()}
       </table>`;
+  }
+  function uncertaintyRow() {
+    const u = state.scores && state.scores.uncertainty ? state.scores.uncertainty[state.day] : 1;
+    return u < 1 ? `<tr><td>Forecast uncertainty</td><td>−${Math.round((1 - u) * 100)}%</td></tr>` : '';
   }
   function openPasturePopup(layer, latlng) {
     const c = layer.getBounds().getCenter();
@@ -321,6 +325,12 @@
         `<b>Drying:</b> sun, warmth, dry air and wind dry out mushrooms that are up. Measured as reference evapotranspiration (ET0) over the last ${dr.days} days: a day under ${dr.et0_mm[0]} mm costs nothing, a day at ${dr.et0_mm[1]} mm or more removes ${Math.round(dr.max_loss * 100)}% of the score. Today and yesterday count fully, older days less. A clear summer day dries far more than a clear November day.`,
         `<b>Frost:</b> each night below ${fr.below_c} °C in the last ${fr.days} days removes ${Math.round((1 - fr.keep_per_night) * 100)}% of the score.`,
         `<b>Score</b> = rain × temperature × drying × frost, from 0 to 100.`,
+        (() => {
+          const keep = m.forecast_uncertainty ? m.forecast_uncertainty.keep_per_day : 1;
+          if (keep >= 1) return `<b>Days ahead:</b> not lowered for forecast uncertainty. Rain forecasts get less reliable further ahead, so use later days as a rough plan.`;
+          const pct = (k) => Math.round(keep ** k * 100);
+          return `<b>Days ahead:</b> lowered for forecast uncertainty. Each day ahead keeps ${pct(1)}% of the previous day's score (day +5: ${pct(5)}%, day +10: ${pct(10)}%).`;
+        })(),
         `<b>Season:</b> scored in ${months} only.`,
         `<b>Land:</b> ${land}`,
       ];

@@ -21,6 +21,7 @@ MODEL = {
     "temperature": {"days": 5, "c": [0, 5, 12, 15]},
     "drying": {"days": 5, "et0_mm": [1.0, 3.5], "max_loss": 0.3, "day_weights": [1, 1, 0.75, 0.5, 0.25]},
     "frost": {"days": 5, "below_c": 0.0, "keep_per_night": 0.75},
+    "forecast_uncertainty": {"keep_per_day": 1.0},
 }
 CFG = {**CONFIG, "model": MODEL}
 
@@ -34,7 +35,7 @@ class ConfigTests(unittest.TestCase):
     def test_config_is_sane(self):
         m = CONFIG["model"]
         self.assertEqual(set(m), set(MODEL))
-        for part in ("rain", "temperature", "drying", "frost"):
+        for part in ("rain", "temperature", "drying", "frost", "forecast_uncertainty"):
             self.assertEqual(set(m[part]), set(MODEL[part]), part)
         self.assertLess(m["rain"]["mm"][0], m["rain"]["mm"][1])
         self.assertLess(m["rain"]["peak_days_back"], m["rain"]["days"])
@@ -42,6 +43,7 @@ class ConfigTests(unittest.TestCase):
         self.assertLess(m["drying"]["et0_mm"][0], m["drying"]["et0_mm"][1])
         self.assertEqual(len(m["drying"]["day_weights"]), m["drying"]["days"])
         self.assertTrue(0 < m["frost"]["keep_per_night"] <= 1)
+        self.assertTrue(0 < m["forecast_uncertainty"]["keep_per_day"] <= 1)
         self.assertTrue(set(m["season_months"]) <= set(range(1, 13)))
         self.assertGreaterEqual(CONFIG["pasture"]["min_years"], 1)
 
@@ -204,6 +206,23 @@ class JobTests(unittest.TestCase):
         expected_loss = 1 - (0.7 * 0.7 * (1 - 0.3 * 0.75) * (1 - 0.3 * 0.5) * (1 - 0.3 * 0.25))
         self.assertEqual(d[0], round(expected_loss * 100))
         self.assertEqual(s[0], round((20 / 45) * (1 - expected_loss) * 100))
+
+    def test_no_uncertainty_decline_by_default(self):
+        out = self.run_job(date(2026, 9, 10), fake_open_meteo())
+        self.assertEqual(out["uncertainty"], [1.0] * 11)
+        self.assertEqual(out["cells"]["7_9"][0], [100] * 11)
+
+    def test_uncertainty_decline_when_switched_on(self):
+        cfg = copy.deepcopy(CFG)
+        cfg["model"]["forecast_uncertainty"]["keep_per_day"] = 0.9
+        out = self.run_job(date(2026, 9, 10), fake_open_meteo(), cfg=cfg)
+        s = out["cells"]["7_9"][0]
+        self.assertEqual(s[0], 100)                       # today is not lowered
+        self.assertEqual(s[1], 90)
+        self.assertEqual(s[10], round(100 * 0.9 ** 10))  # 35
+        self.assertAlmostEqual(out["uncertainty"][5], 0.9 ** 5, places=4)
+        # weather details are not discounted, only the score
+        self.assertEqual(out["cells"]["7_9"][1][10], 50.0)
 
     def test_season_edge(self):
         out = self.run_job(date(2026, 11, 25), fake_open_meteo())

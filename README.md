@@ -47,6 +47,7 @@ Every part is a factor from 0 to 1 and the parts are multiplied:
 | Temperature | 5-day mean of daily mean: 0 at ≤ 0 °C, rising to 1 at 5 °C, 1 up to 12 °C, falling to 0 at 15 °C, 0 above |
 | Drying | Reference evapotranspiration (ET0, FAO-56) on each of the last 5 days: none below 1.0 mm, up to 30 % removed at ≥ 3.5 mm, with day weights 1, 1, 0.75, 0.5, 0.25 (today first). Season-aware: a clear summer day dries far more than a clear November day |
 | Frost | Each night below 0 °C in the last 5 days multiplies by 0.75 |
+| Days ahead | Optional discount for forecast uncertainty: the score for day +k is multiplied by `forecast_uncertainty.keep_per_day`^k. Set to 1.0 (no decline); e.g. 0.95 gives day +5 ×0.77 and day +10 ×0.60. Only the score is lowered; the rain, temperature and drying shown in the popup are not |
 | Season | Only days in July–November get a score |
 | Land | Pasture (*Bete*) in each of the last 10 yearly layers |
 

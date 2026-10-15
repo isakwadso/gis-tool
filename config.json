@@ -70,6 +70,9 @@
       "days": 5,
       "below_c": 0.0,
       "keep_per_night": 0.75
+    },
+    "forecast_uncertainty": {
+      "keep_per_day": 1.0
     }
   },
   "forecast": {

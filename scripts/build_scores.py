@@ -74,6 +74,13 @@ def target_dates(today: date, days_ahead: int) -> list[date]:
     return [today + timedelta(days=k) for k in range(days_ahead + 1)]
 
 
+def uncertainty_factor(model: dict, days_ahead: int) -> float:
+    """Optional discount for days further ahead: keep_per_day ** days_ahead.
+    keep_per_day = 1.0 (the default) means forecast days are not lowered."""
+    keep = float(model.get("forecast_uncertainty", {}).get("keep_per_day", 1.0))
+    return keep ** max(0, days_ahead)
+
+
 def call_weight(locations: int, days: int, variables: int) -> float:
     """Open-Meteo counts a location as more than one call beyond 14 days or 10 variables."""
     return locations * max(1.0, days / 14) * max(1.0, variables / 10)
@@ -92,6 +99,8 @@ def build(cfg: dict, cells_meta: dict | None, now: datetime, fetch: Fetcher,
         "today": today.isoformat(),
         "timezone": tz,
         "dates": [d.isoformat() for d in dates],
+        # Multiplier per day for forecast uncertainty: keep_per_day ** days ahead (1.0 = no decline)
+        "uncertainty": [round(uncertainty_factor(model, k), 4) for k in range(len(dates))],
         "inSeason": in_season,
         "model": model,
         "source": {"name": "Open-Meteo", "url": "https://open-meteo.com/", "licence": "CC BY 4.0"},
@@ -135,10 +144,13 @@ def build(cfg: dict, cells_meta: dict | None, now: datetime, fetch: Fetcher,
                 by_date[d] = tuple(daily.get(v, [None] * (k + 1))[k] for v in DAILY_VARS)
             s_list, r_list, t_list, f_list, d_list = [], [], [], [], []
             empty = (None,) * len(DAILY_VARS)
-            for d, season in zip(dates, in_season):
+            for ahead, (d, season) in enumerate(zip(dates, in_season)):
                 window = [(d - timedelta(days=n - 1 - k)).isoformat() for k in range(n)]
                 res_day = score_day([by_date.get(w, empty) for w in window], model)
-                s_list.append(round(res_day.score * 100) if (season and res_day.score is not None) else None)
+                score = None
+                if season and res_day.score is not None:
+                    score = round(res_day.score * out["uncertainty"][ahead] * 100)
+                s_list.append(score)
                 r_list.append(None if res_day.rain_mm is None else round(res_day.rain_mm, 1))
                 t_list.append(None if res_day.tmean_c is None else round(res_day.tmean_c, 1))
                 f_list.append(res_day.frost_nights)
