@@ -1,8 +1,9 @@
 """Build the static pasture layer for the map.
 
 Downloads Jordbruksverket's farm blocks (jordbruksblock) of the chosen land
-type(s) for one region from their public WFS, simplifies the outlines, and
-writes small chunk files the phone can load on demand:
+type(s) for one region from their public WFS, keeps only blocks that have been
+that land type for the last `pasture.min_years` yearly layers, simplifies the
+outlines, and writes small chunk files the phone can load on demand:
 
   site/data/cells.json             weather grid cells that contain pasture
   site/data/pasture/<ci>_<cj>.json polygons, grouped by chunk of grid cells
@@ -27,10 +28,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Callable
 
 from pyproj import Transformer
+from shapely import STRtree
 from shapely.geometry import MultiPolygon, Polygon, shape
-from shapely.ops import transform
+from shapely.ops import unary_union
 from shapely.validation import make_valid
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -106,6 +109,98 @@ def download(year: int, prefix: str, types: list[str]) -> list[dict]:
     return features
 
 
+def download_ids(year: int, prefix: str, types: list[str]) -> set[str]:
+    """Block ids of the chosen land type(s) in one yearly layer (no geometry)."""
+    cql = cql_filter(year, prefix, types)
+    ids: set[str] = set()
+    expected = None
+    start = 0
+    while True:
+        p = base_params() | {"COUNT": 20000, "STARTINDEX": start, "sortBy": "blockid",
+                             "propertyName": "blockid", "CQL_FILTER": cql}
+        page = http_json(p)
+        expected = page.get("numberMatched", expected)
+        batch = page.get("features", [])
+        ids.update(str(f["properties"]["blockid"]) for f in batch)
+        if len(batch) < 20000:
+            break
+        start += 20000
+        time.sleep(2)
+    if expected is not None and len(ids) != int(expected):
+        raise RuntimeError(f"{year}: got {len(ids)} block ids but server reported {expected}")
+    if not ids:
+        raise RuntimeError(f"No blocks found for {year}; is that yearly layer published?")
+    return ids
+
+
+def clean_geometry(geojson: dict):
+    g = shape(geojson)
+    return g if g.is_valid else make_valid(g)
+
+
+def filter_by_history(features: list[dict], years: list[int], ids_by_year: dict[int, set[str]],
+                      load_polygons: Callable[[int], list], min_overlap: float) -> tuple[list[dict], dict]:
+    """Keep blocks that were the chosen land type in every one of `years`.
+
+    A block passes a year if its id is in that year's layer, or, when it was redrawn
+    under a new id, if at least `min_overlap` of its area was covered by blocks of the
+    land type that year. Geometry for a year is only loaded if some block needs it.
+    """
+    by_id: set[int] = set()
+    by_location: dict[int, dict] = {}   # index -> {"missing": years, "geom": shapely or None}
+    for idx, f in enumerate(features):
+        bid = str(f.get("properties", {}).get("blockid", ""))
+        missing = {y for y in years if bid not in ids_by_year[y]}
+        if not missing:
+            by_id.add(idx)
+        elif f.get("geometry"):
+            by_location[idx] = {"missing": missing, "geom": None}
+
+    for year in years:
+        need = [i for i, a in by_location.items() if year in a["missing"]]
+        if not need:
+            continue
+        polys = load_polygons(year)
+        tree = STRtree(polys)
+        for i in need:
+            a = by_location[i]
+            if a["geom"] is None:
+                a["geom"] = clean_geometry(features[i]["geometry"])
+            g = a["geom"]
+            hits = [polys[k] for k in tree.query(g)]
+            covered = g.intersection(unary_union(hits)).area if hits else 0.0
+            if g.area <= 0 or covered / g.area < min_overlap:
+                del by_location[i]
+        print(f"  {year}: checked {len(need)} redrawn or new blocks by location, "
+              f"{len(by_location)} still pass", flush=True)
+
+    keep = by_id | set(by_location)
+    kept = [f for i, f in enumerate(features) if i in keep]
+    stats = {"years": [years[0], years[-1]], "candidates": len(features), "kept_by_id": len(by_id),
+             "kept_by_location": len(by_location), "dropped": len(features) - len(kept)}
+    return kept, stats
+
+
+def apply_history_filter(features: list[dict], year: int, prefix: str, types: list[str],
+                         min_years: int, min_overlap: float) -> tuple[list[dict], dict]:
+    years = list(range(year - min_years + 1, year + 1))
+    print(f"Keeping blocks that were {', '.join(types)} in every year {years[0]}–{years[-1]}", flush=True)
+    ids_by_year = {year: {str(f["properties"]["blockid"]) for f in features}}
+    for y in years[:-1]:
+        ids_by_year[y] = download_ids(y, prefix, types)
+        print(f"  {y}: {len(ids_by_year[y])} blocks", flush=True)
+
+    def load_polygons(y: int) -> list:
+        print(f"  {y}: downloading outlines to check redrawn blocks", flush=True)
+        out = []
+        for f in download(y, prefix, types):
+            if f.get("geometry"):
+                out.extend(polygons_of(clean_geometry(f["geometry"])))
+        return out
+
+    return filter_by_history(features, years, ids_by_year, load_polygons, min_overlap)
+
+
 def polygons_of(geom) -> list[Polygon]:
     if geom.is_empty:
         return []
@@ -155,7 +250,7 @@ def cell_of(lat: float, lon: float, grid: dict) -> tuple[int, int]:
     return i, j
 
 
-def build(features: list[dict], cfg: dict, year: int, out_dir: Path) -> dict:
+def build(features: list[dict], cfg: dict, year: int, out_dir: Path, history: dict | None = None) -> dict:
     grid = cfg["grid"]
     cpc = grid["cells_per_chunk"]
     tol = cfg["pasture"]["simplify_m"]
@@ -240,6 +335,8 @@ def build(features: list[dict], cfg: dict, year: int, out_dir: Path) -> dict:
             "year": year,
             "types": cfg["pasture"]["types"],
             "region": cfg["region"]["name"],
+            "min_years": cfg["pasture"].get("min_years", 1),
+            "history": history,
         },
         "n_blocks": sum(len(v) for v in chunks.values()),
         "skipped": skipped,
@@ -277,10 +374,20 @@ def main() -> int:
         print("No features returned; leaving existing data untouched.", file=sys.stderr)
         return 1
 
+    history = None
+    min_years = int(cfg["pasture"].get("min_years", 1))
+    if min_years > 1 and not args.from_file:
+        features, history = apply_history_filter(features, year, prefix, types, min_years,
+                                                 float(cfg["pasture"].get("history_overlap", 0.5)))
+        print(f"History filter: {history}", flush=True)
+        if not features:
+            print("No blocks passed the history filter; leaving existing data untouched.", file=sys.stderr)
+            return 1
+
     with tempfile.TemporaryDirectory() as tmp:
         tmp_out = Path(tmp) / "data"
         tmp_out.mkdir()
-        meta = build(features, cfg, year, tmp_out)
+        meta = build(features, cfg, year, tmp_out, history)
         # Replace the old layer only once the new one is complete.
         args.out.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(args.out / "pasture", ignore_errors=True)

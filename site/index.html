@@ -12,7 +12,7 @@
   <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <main class="app">
@@ -74,12 +74,14 @@
     <div class="about-body">
       <p>Coloured areas are permanent pastures where recent and forecast weather has suited the
         <em>field mushroom</em> (<em>Agaricus campestris</em>). Pick a day with the slider: the score for a day
-        uses the five days ending on that day.</p>
+        uses the weather of the ten days ending on that day.</p>
       <h3>How the score works</h3>
       <ul id="model-list"></ul>
       <p class="muted small">The score is a relative index, not a probability. Weather is calculated for a grid of
         roughly 5&nbsp;km squares, so neighbouring pastures share a score. "Past" days are weather-model data, not
-        station measurements. Rain forecasts more than about five days ahead are uncertain.</p>
+        station measurements. Rain forecasts more than about five days ahead are uncertain. The rules were
+        checked against 233 dated finds in Skåne (GBIF/Artportalen); they rank find days only slightly above
+        nearby days, so treat the map as a nudge, not a promise.</p>
       <h3>Before you pick</h3>
       <p>Field mushrooms can be confused with toxic species, including the yellow-staining mushroom
         (<em>Agaricus xanthodermus</em>) and deadly white amanitas. Only eat mushrooms you have identified with certainty.</p>
@@ -92,6 +94,6 @@
   </dialog>
 
   <script src="vendor/leaflet/leaflet.js"></script>
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

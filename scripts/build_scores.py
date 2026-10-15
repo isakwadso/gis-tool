@@ -26,13 +26,14 @@ from typing import Callable
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from model import score_window  # noqa: E402
+from model import history_days, score_day  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 API = "https://api.open-meteo.com/v1/forecast"
-DAILY_VARS = ["precipitation_sum", "temperature_2m_mean", "temperature_2m_min"]
+DAILY_VARS = ["precipitation_sum", "temperature_2m_mean", "temperature_2m_min", "et0_fao_evapotranspiration"]
 USER_AGENT = "gis-tool mushroom map (https://github.com/isakwadso/gis-tool)"
 MAX_FAILED_SHARE = 0.10
+CALLS_PER_MINUTE = 500  # Open-Meteo free tier allows 600; keep a margin
 
 Fetcher = Callable[[list[tuple[float, float]], dict], list[dict]]
 
@@ -73,6 +74,11 @@ def target_dates(today: date, days_ahead: int) -> list[date]:
     return [today + timedelta(days=k) for k in range(days_ahead + 1)]
 
 
+def call_weight(locations: int, days: int, variables: int) -> float:
+    """Open-Meteo counts a location as more than one call beyond 14 days or 10 variables."""
+    return locations * max(1.0, days / 14) * max(1.0, variables / 10)
+
+
 def build(cfg: dict, cells_meta: dict | None, now: datetime, fetch: Fetcher,
           pause_s: float | None = None) -> dict:
     model = cfg["model"]
@@ -100,11 +106,18 @@ def build(cfg: dict, cells_meta: dict | None, now: datetime, fetch: Fetcher,
         out["status"] = "out-of-season"
         return out
 
-    n = model["window_days"]
+    n = history_days(model)
     params = {"timezone": tz, "past_days": n - 1, "forecast_days": fc["days_ahead"] + 1}
     rows = cells_meta["cells"]
     size = fc["batch_size"]
-    pause = fc["pause_between_batches_s"] if pause_s is None else pause_s
+    days_per_location = params["past_days"] + params["forecast_days"]
+    batch_calls = call_weight(size, days_per_location, len(DAILY_VARS))
+    if pause_s is None:
+        # Space batches so a burst never exceeds the per-minute limit.
+        pause = max(fc["pause_between_batches_s"], 60 * batch_calls / CALLS_PER_MINUTE)
+    else:
+        pause = pause_s
+    out["calls"] = round(call_weight(len(rows), days_per_location, len(DAILY_VARS)))
     failed = 0
 
     for b in range(0, len(rows), size):
@@ -120,19 +133,20 @@ def build(cfg: dict, cells_meta: dict | None, now: datetime, fetch: Fetcher,
             by_date = {}
             for k, d in enumerate(daily.get("time", [])):
                 by_date[d] = tuple(daily.get(v, [None] * (k + 1))[k] for v in DAILY_VARS)
-            s_list, r_list, t_list, f_list = [], [], [], []
+            s_list, r_list, t_list, f_list, d_list = [], [], [], [], []
+            empty = (None,) * len(DAILY_VARS)
             for d, season in zip(dates, in_season):
                 window = [(d - timedelta(days=n - 1 - k)).isoformat() for k in range(n)]
-                vals = [by_date.get(w, (None, None, None)) for w in window]
-                res_day = score_window([v[0] for v in vals], [v[1] for v in vals],
-                                       [v[2] for v in vals], model)
+                res_day = score_day([by_date.get(w, empty) for w in window], model)
                 s_list.append(round(res_day.score * 100) if (season and res_day.score is not None) else None)
                 r_list.append(None if res_day.rain_mm is None else round(res_day.rain_mm, 1))
                 t_list.append(None if res_day.tmean_c is None else round(res_day.tmean_c, 1))
-                f_list.append(res_day.frost_days)
+                f_list.append(res_day.frost_nights)
+                d_list.append(None if res_day.drying_loss is None else round(res_day.drying_loss * 100))
             if all(v is None for v in r_list):
                 failed += 1
-            out["cells"][row[0]] = [s_list, r_list, t_list, f_list]
+            # Per day: score %, weighted rain mm, mean temperature °C, frost nights, drying loss %
+            out["cells"][row[0]] = [s_list, r_list, t_list, f_list, d_list]
 
     out["failedCells"] = failed
     if failed > MAX_FAILED_SHARE * len(rows):
@@ -144,7 +158,8 @@ def build(cfg: dict, cells_meta: dict | None, now: datetime, fetch: Fetcher,
 def summarize(out: dict) -> str:
     if out.get("status") != "ok":
         return f"status: {out.get('status')}"
-    lines = [f"status ok, {len(out['cells'])} cells, {out.get('failedCells', 0)} without weather"]
+    lines = [f"status ok, {len(out['cells'])} cells, {out.get('failedCells', 0)} without weather, "
+             f"~{out.get('calls')} Open-Meteo calls"]
     for k, d in enumerate(out["dates"]):
         scores = [c[0][k] for c in out["cells"].values() if c[0][k] is not None]
         if scores:

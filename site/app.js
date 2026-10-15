@@ -45,8 +45,14 @@
   }
   function cellData(cid, day) {
     const c = state.scores && state.scores.cells && state.scores.cells[cid];
-    if (!c) return { s: null, r: null, t: null, f: null };
-    return { s: c[0][day], r: c[1][day], t: c[2][day], f: c[3][day] };
+    if (!c) return { s: null, r: null, t: null, f: null, d: null };
+    return { s: c[0][day], r: c[1][day], t: c[2][day], f: c[3][day], d: c[4] ? c[4][day] : null };
+  }
+  // Days of weather, ending on the scored day, that the model uses.
+  function modelDays(m) {
+    if (!m) return 5;
+    if (m.rain) return Math.max(m.rain.days, m.temperature.days, m.drying.days, m.frost.days);
+    return m.window_days || 5;
   }
   function dayName(idx) {
     const d = state.scores.dates[idx];
@@ -57,14 +63,17 @@
     return base;
   }
   function dayNote(idx) {
-    const n = (state.scores.model && state.scores.model.window_days) || 5;
+    const n = modelDays(state.scores.model);
     if (!state.scores.inSeason[idx]) return 'Out of season (scores July–November only)';
     if (state.todayIdx < 0) return '';
     const k = idx - state.todayIdx;
     const past = Math.max(0, n - 1 - k);
-    if (past > 0) return `${past} past day${past > 1 ? 's' : ''} + ${n - past} forecast day${n - past > 1 ? 's' : ''}`;
-    if (k >= 6) return 'Forecast only — rain this far ahead is uncertain';
-    return 'Forecast only';
+    const fc = n - past;
+    let note = past > 0
+      ? `${past} past day${past > 1 ? 's' : ''} + ${fc} forecast day${fc > 1 ? 's' : ''}`
+      : 'Forecast only';
+    if (k >= 5) note += ' · rain this far ahead is uncertain';
+    return note;
   }
   function cellBounds(cid) {
     const [i, j] = cid.split('_').map(Number);
@@ -228,15 +237,16 @@
 
   // ---------- popups ----------
   function weatherTable(cid) {
-    const { s, r, t, f } = cellData(cid, state.day);
+    const { s, r, t, f, d } = cellData(cid, state.day);
     const lk = look(s);
     const score = s == null ? '—' : `${s}%`;
     const fmt = (v, unit) => (v == null ? '—' : `${v} ${unit}`);
     return `<div class="pop-title"><i class="sw" style="--c:${lk.seen};--s:${lk.stroke}"></i>${esc(lk.label)} · ${score}</div>
       <div class="pop-date">${esc(dayName(state.day))}</div>
       <table>
-        <tr><td>Rain, 5 days</td><td>${fmt(r, 'mm')}</td></tr>
-        <tr><td>Mean temperature</td><td>${fmt(t, '°C')}</td></tr>
+        <tr><td>Rain, weighted 10 days</td><td>${fmt(r, 'mm')}</td></tr>
+        <tr><td>Mean temperature, 5 days</td><td>${fmt(t, '°C')}</td></tr>
+        <tr><td>Drying, 5 days</td><td>${d == null ? '—' : d === 0 ? 'none' : `−${d}%`}</td></tr>
         <tr><td>Frost nights</td><td>${f == null ? '—' : f}</td></tr>
       </table>`;
   }
@@ -297,15 +307,22 @@
     const m = (state.scores && state.scores.model) || null;
     const list = $('model-list');
     list.innerHTML = '';
-    if (m) {
-      const n = m.window_days;
+    if (m && m.rain) {
+      const months = m.season_months.length === 5 && m.season_months[0] === 7 ? 'July–November' : 'months ' + m.season_months.join(', ');
+      const src = state.cells && state.cells.source;
+      const hist = src && src.history && src.history.years;
+      const land = src && src.min_years > 1
+        ? `permanent pasture (betesmark) that has been pasture every year ${hist ? `${hist[0]}–${hist[1]}` : `for ${src.min_years} years`}.`
+        : 'permanent pasture (betesmark) only.';
+      const r = m.rain, t = m.temperature, dr = m.drying, fr = m.frost;
       const items = [
-        `<b>Rain:</b> total over ${n} days. 0 at ${m.rain_mm[0]} mm or less, rising evenly to full score at ${m.rain_mm[1]} mm.`,
-        `<b>Temperature:</b> ${n}-day mean of daily mean temperature. Full score ${m.temp_c[1]}–${m.temp_c[2]} °C, falling to 0 at ${m.temp_c[0]} °C and at ${m.temp_c[3]} °C; 0 above ${m.temp_c[3]} °C.`,
-        `<b>Frost:</b> each night below ${m.frost_below_c} °C subtracts ${Math.round(m.frost_penalty * 100)} points.`,
-        `<b>Score</b> = rain × temperature − frost, from 0 to 100.`,
-        `<b>Season:</b> scored in ${m.season_months.length === 5 && m.season_months[0] === 7 ? 'July–November' : 'months ' + m.season_months.join(', ')} only.`,
-        `<b>Land:</b> permanent pasture (betesmark) only.`,
+        `<b>Rain:</b> the last ${r.days} days, weighted. Rain ${r.peak_days_back} days before counts most, rain on the day itself a third of that, and older rain fades by ${Math.round(r.fade_per_day * 100)}% per day. Scaled so steady rain gives the same number as a 5-day total: 0 at ${r.mm[0]} mm or less, rising evenly to full score at ${r.mm[1]} mm.`,
+        `<b>Temperature:</b> ${t.days}-day mean of daily mean temperature. Full score ${t.c[1]}–${t.c[2]} °C, falling to 0 at ${t.c[0]} °C and at ${t.c[3]} °C; 0 above ${t.c[3]} °C.`,
+        `<b>Drying:</b> sun, warmth, dry air and wind dry out mushrooms that are up. Measured as reference evapotranspiration (ET0) over the last ${dr.days} days: a day under ${dr.et0_mm[0]} mm costs nothing, a day at ${dr.et0_mm[1]} mm or more removes ${Math.round(dr.max_loss * 100)}% of the score. Today and yesterday count fully, older days less. A clear summer day dries far more than a clear November day.`,
+        `<b>Frost:</b> each night below ${fr.below_c} °C in the last ${fr.days} days removes ${Math.round((1 - fr.keep_per_night) * 100)}% of the score.`,
+        `<b>Score</b> = rain × temperature × drying × frost, from 0 to 100.`,
+        `<b>Season:</b> scored in ${months} only.`,
+        `<b>Land:</b> ${land}`,
       ];
       items.forEach((h) => { const li = document.createElement('li'); li.innerHTML = h; list.appendChild(li); });
     }
@@ -317,7 +334,8 @@
     }
     if (state.cells && state.cells.source) {
       const s = state.cells.source;
-      rows.push(`Pasture: <a href="${esc(s.url)}" rel="noopener">Jordbruksverket</a>, farm blocks ${esc(s.year)} (${esc(s.types.join(', '))}), ${state.cells.n_blocks.toLocaleString('en-GB')} blocks in ${esc(s.region)}.`);
+      const kept = s.history ? ` that were pasture every year ${esc(s.history.years[0])}–${esc(s.history.years[1])}` : '';
+      rows.push(`Pasture: <a href="${esc(s.url)}" rel="noopener">Jordbruksverket</a>, farm blocks ${esc(s.year)} (${esc(s.types.join(', '))}), ${state.cells.n_blocks.toLocaleString('en-GB')} blocks in ${esc(s.region)}${kept}.`);
     }
     rows.push('Base map: © <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a> contributors.');
     rows.forEach((h) => { const li = document.createElement('li'); li.innerHTML = h; dl.appendChild(li); });

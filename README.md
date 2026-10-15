@@ -18,33 +18,49 @@ Open-Meteo API ──(every 3 h)───► Forecast and publish ──► site
 
 1. **Pasture layer** (`scripts/build_pasture.py`, workflow *Build pasture layer*):
    downloads the latest farm blocks (*jordbruksblock*) of type *Bete* for Skåne
-   from Jordbruksverket's public WFS, simplifies the outlines to ~1.5 m, groups
-   them into small files, and assigns each block to a ~5 km weather grid square.
+   from Jordbruksverket's public WFS and keeps only blocks that have been pasture
+   in each of the last 10 yearly layers (`pasture.min_years`). A block passes a year
+   if its id is in that year's layer, or — when Jordbruksverket redrew it under a new
+   id — if at least half its area (`pasture.history_overlap`) was pasture that year.
+   It then simplifies the outlines to ~1.5 m, groups them into small files, and
+   assigns each block to a ~5 km weather grid square.
    The same workflow fetches city, town and village names for the region from
    OpenStreetMap (`scripts/build_places.py`); the page draws them on top of the
    coloured squares so you can see where you are when zoomed out. The public
    Overpass servers often refuse requests from GitHub's machines; when that
    happens the existing `site/data/places.json` (fetched 8 Oct 2026) is kept.
 2. **Scores** (`scripts/build_scores.py`, workflow *Forecast and publish*): asks
-   Open-Meteo for daily rain, mean and minimum temperature for the past 4 days and
-   the next 11 days at every grid square that contains pasture, then scores each
-   day with the model below.
+   Open-Meteo for daily rain, mean and minimum temperature and reference
+   evapotranspiration (ET0) for the past 9 days and the next 11 days at every grid
+   square that contains pasture, then scores each day with the model below.
 3. **Page** (`site/`): Leaflet map with an OpenStreetMap base map. Zoomed out it
    shows the grid squares; zoomed in (level 12+) it draws the individual pastures.
 
-## The model (`scripts/model.py`, settings in `config.json`)
+## The model (`scripts/model.py`, settings in `config.json` → `model`)
 
-For a day D the window is the 5 days ending on D.
+Every part is a factor from 0 to 1 and the parts are multiplied:
+**score = rain × temperature × drying × frost**, shown as 0–100.
 
 | Part | Rule |
 |---|---|
-| Rain | Window total: 0 at ≤ 5 mm, rising linearly to 1 at ≥ 50 mm |
-| Temperature | Window mean of daily mean: 0 at ≤ 0 °C, rising to 1 at 5 °C, 1 up to 12 °C, falling to 0 at 15 °C, 0 above |
-| Frost | Each day with minimum below 0 °C subtracts 0.25 |
-| Score | clamp(rain × temperature − frost, 0, 1), shown as 0–100 |
+| Rain | Last 10 days, weighted: rain 2 days before the scored day counts most, the day itself ⅓ of that, the day before ⅔; older rain fades 20 %/day. Weights add up to 5, so steady rain equals a 5-day total. 0 at ≤ 5 mm, rising linearly to 1 at ≥ 50 mm |
+| Temperature | 5-day mean of daily mean: 0 at ≤ 0 °C, rising to 1 at 5 °C, 1 up to 12 °C, falling to 0 at 15 °C, 0 above |
+| Drying | Reference evapotranspiration (ET0, FAO-56) on each of the last 5 days: none below 1.0 mm, up to 30 % removed at ≥ 3.5 mm, with day weights 1, 1, 0.75, 0.5, 0.25 (today first). Season-aware: a clear summer day dries far more than a clear November day |
+| Frost | Each night below 0 °C in the last 5 days multiplies by 0.75 |
 | Season | Only days in July–November get a score |
+| Land | Pasture (*Bete*) in each of the last 10 yearly layers |
 
 This is a relative suitability index, not a calibrated probability.
+
+**Checked against finds (15 Oct 2026).** 233 dated finds in Skåne (GBIF, which
+includes Artportalen; Jul–Nov, 2005–2026) were compared with the 10 days before
+and after at the same place, using Open-Meteo's historical weather. A rule with
+no skill ranks the find day at 50 %. The old 5-day rain total scored 51 %, the
+10-day weighted rain about 54 % (delays of 1–5 days all similar), and ET0 drying
+added little that the finds can resolve. The temperature rule gives 0 on 90 of
+the 233 find days (5-day mean ≥ 15 °C, mostly July–September). Sunshine hours
+from Open-Meteo were not used: at Lund they ran 50–85 % above SMHI's measured
+sunshine in Jul–Sep 2026, while solar radiation (which ET0 uses) was within 2–13 %.
 
 ## Running things by hand
 
@@ -65,8 +81,10 @@ Local test: `python -m unittest discover -s scripts`
 - GitHub Actions and Pages are free for public repositories on standard runners.
   The workflows use only GitHub-made actions and `ubuntu-latest`.
 - Open-Meteo's free tier is for non-commercial use (600 calls/min, 10,000/day).
-  Each run uses roughly one call per grid square, sent in batches of 100 with a
-  pause between them. Visitors never call Open-Meteo; only the workflow does.
+  Each run asks for 20 days per grid square, which Open-Meteo counts as about
+  1.4 calls per square (~650 per run, ~5,300 a day at 8 runs). Squares are sent in
+  batches of 100 with a pause sized to stay under the per-minute limit. Visitors
+  never call Open-Meteo; only the workflow does.
 - GitHub Pages has a soft limit of 100 GB traffic per month; the site is a few MB.
 
 ## Data and licences

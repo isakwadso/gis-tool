@@ -14,7 +14,9 @@
     "types": [
       "Bete"
     ],
-    "simplify_m": 1.5
+    "simplify_m": 1.5,
+    "min_years": 10,
+    "history_overlap": 0.5
   },
   "grid": {
     "origin_lat": 55.3,
@@ -24,31 +26,56 @@
     "cells_per_chunk": 2
   },
   "model": {
-    "window_days": 5,
-    "rain_mm": [
-      5,
-      50
-    ],
-    "temp_c": [
-      0,
-      5,
-      12,
-      15
-    ],
-    "frost_below_c": 0.0,
-    "frost_penalty": 0.25,
     "season_months": [
       7,
       8,
       9,
       10,
       11
-    ]
+    ],
+    "rain": {
+      "days": 10,
+      "peak_days_back": 2,
+      "fade_per_day": 0.2,
+      "mm": [
+        5,
+        50
+      ]
+    },
+    "temperature": {
+      "days": 5,
+      "c": [
+        0,
+        5,
+        12,
+        15
+      ]
+    },
+    "drying": {
+      "days": 5,
+      "et0_mm": [
+        1.0,
+        3.5
+      ],
+      "max_loss": 0.3,
+      "day_weights": [
+        1,
+        1,
+        0.75,
+        0.5,
+        0.25
+      ]
+    },
+    "frost": {
+      "days": 5,
+      "below_c": 0.0,
+      "keep_per_night": 0.75
+    }
   },
   "forecast": {
     "days_ahead": 10,
     "timezone": "Europe/Stockholm",
     "batch_size": 100,
-    "pause_between_batches_s": 15
+    "pause_between_batches_s": 25
   }
 }
