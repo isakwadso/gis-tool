@@ -43,7 +43,7 @@ Every part is a factor from 0 to 1 and the parts are multiplied:
 
 | Part | Rule |
 |---|---|
-| Rain | Last 10 days, weighted: rain 2 days before the scored day counts most, the day itself ⅓ of that, the day before ⅔; older rain fades 20 %/day. Weights add up to 5, so steady rain equals a 5-day total. 0 at ≤ 5 mm, rising linearly to 1 at ≥ 50 mm |
+| Rain | Last 10 days, weighted: rain 2 days before the scored day counts most, the day itself ⅓ of that, the day before ⅔; older rain fades 20 %/day. Weights add up to 5, so steady rain equals a 5-day total. 0 at ≤ 5 mm, rising linearly to 1 at ≥ 30 mm |
 | Temperature | 5-day mean of daily mean: 0 at ≤ 0 °C, rising to 1 at 5 °C, 1 up to 12 °C, falling to 0 at 15 °C, 0 above |
 | Drying | Reference evapotranspiration (ET0, FAO-56) on each of the last 5 days: none below 1.0 mm, up to 30 % removed at ≥ 3.5 mm, with day weights 1, 1, 0.75, 0.5, 0.25 (today first). Season-aware: a clear summer day dries far more than a clear November day |
 | Frost | Each night below 0 °C in the last 5 days multiplies by 0.75 |
@@ -52,6 +52,14 @@ Every part is a factor from 0 to 1 and the parts are multiplied:
 | Land | Pasture (*Bete*) in each of the last 10 yearly layers |
 
 This is a relative suitability index, not a calibrated probability.
+
+**Rain target (15 Oct 2026).** Full rain score at 30 mm marks a really rainy period
+for Skåne in autumn. At 19 SMHI gauges (Jul–Nov 1996–2025) the weighted rain has a
+median of 9 mm; the wettest 10 % of days reach 27 mm and the wettest 5 % 35 mm.
+Open-Meteo's model rain, which the map uses, runs about 10 % lower (wettest 10 % ≈ 23 mm).
+With 5→30 mm, about 9 % of autumn days reach 75 % of the rain score and 5 % reach
+full score, and most years every area gets at least one full-score spell. The earlier
+50 mm target was reached on only ~1 % of days.
 
 **Checked against finds (15 Oct 2026).** 233 dated finds in Skåne (GBIF, which
 includes Artportalen; Jul–Nov, 2005–2026) were compared with the 10 days before

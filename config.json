@@ -39,7 +39,7 @@
       "fade_per_day": 0.2,
       "mm": [
         5,
-        50
+        30
       ]
     },
     "temperature": {
