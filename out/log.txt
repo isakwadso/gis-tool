@@ -1,0 +1,27 @@
+GBIF: 409 records of A. campestris in the box
+GBIF: kept 249 finds; dropped {'duplicate': 6, 'outside Skåne': 12, 'outside Jul-Nov': 16, 'before 2005': 125, 'no exact day': 1}
+SMHI: 85 precipitation stations in and around Skåne
+  1/85 stations downloaded
+  11/85 stations downloaded
+  21/85 stations downloaded
+  31/85 stations downloaded
+  41/85 stations downloaded
+  51/85 stations downloaded
+  61/85 stations downloaded
+  71/85 stations downloaded
+  81/85 stations downloaded
+SMHI: 85 stations with data
+Climatology 60 days (Jul-Nov ends): {'0.05': 60.5, '0.1': 73.5, '0.25': 98.1, '0.5': 130.7, '0.75': 172.7, '0.9': 223.5, '0.95': 259.7}
+Open-Meteo check: reusing previous result (no new calls)
+Finds with a station within 25 km: 249 (no station: 0)
+  dry then wet (exploratory): {'observed': 0.402, 'expected': 0.257, 'difference_ci95': [0.065, 0.225]}
+  across years, 10d: mean rank 0.568 (95% CI 0.535-0.607), n=249
+  across years, 20d: mean rank 0.594 (95% CI 0.546-0.649), n=249
+  across years, 30d: mean rank 0.562 (95% CI 0.511-0.631), n=249
+  across years, 45d: mean rank 0.484 (95% CI 0.424-0.571), n=249
+  across years, 60d: mean rank 0.444 (95% CI 0.374-0.548), n=249
+  across years, 90d: mean rank 0.390 (95% CI 0.299-0.517), n=249
+  across years, days 11-60 only: mean rank 0.406 (95% CI 0.340-0.507), n=249
+  within season, 60d: {'n': 239, 'mean_rank': 0.552, 'ci95': [0.512, 0.6]}
+Years: Spearman -0.504 (p 0.023) over 21 years, 60 days ending 18 Sep
+done

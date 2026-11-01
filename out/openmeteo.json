@@ -1,0 +1,34 @@
+{
+ "stations": [
+  {
+   "id": 62220,
+   "name": "Baramossa",
+   "days": 366,
+   "open_meteo_over_station": 0.759,
+   "pearson_r": 0.96
+  },
+  {
+   "id": 63180,
+   "name": "Bj\u00e4rnum D",
+   "days": 366,
+   "open_meteo_over_station": 0.87,
+   "pearson_r": 0.838
+  },
+  {
+   "id": 54410,
+   "name": "Br\u00f6sarp D",
+   "days": 366,
+   "open_meteo_over_station": 0.784,
+   "pearson_r": 0.953
+  },
+  {
+   "id": 52240,
+   "name": "Falsterbo A",
+   "days": 366,
+   "open_meteo_over_station": 0.972,
+   "pearson_r": 0.82
+  }
+ ],
+ "calls": 157.19999999999996,
+ "mean_ratio": 0.846
+}
