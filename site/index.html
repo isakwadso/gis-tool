@@ -12,16 +12,16 @@
   <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <main class="app">
     <div class="map-wrap">
       <div id="map" role="application" aria-label="Map of pasture coloured by suitability"></div>
       <header class="topbar">
-        <div class="brand">
-          <img src="icons/favicon-32.png" alt="" width="22" height="22">
-          <span>Field mushroom · <span id="region">Skåne</span></span>
+        <div class="views" role="tablist" aria-label="Map shows">
+          <button id="view-score" class="view-btn" role="tab" type="button" aria-selected="true">Suitability</button>
+          <button id="view-rain" class="view-btn" role="tab" type="button" aria-selected="false">Rain, 60 days</button>
         </div>
         <div class="actions">
           <button id="locate" class="icon-btn" type="button" aria-label="Show my location" title="Show my location">
@@ -51,7 +51,7 @@
       </div>
       <input id="day" type="range" min="0" max="10" step="1" value="0" aria-label="Day">
       <div id="ticks" class="ticks" aria-hidden="true"></div>
-      <div class="legend" aria-label="Legend">
+      <div id="legend" class="legend" aria-label="Legend">
         <span class="legend-title small muted">Suitability</span>
         <span class="key"><i class="sw sw-zero"></i>0</span>
         <span class="key"><i class="sw" style="--c:#d88a47;--s:#aa4603"></i>1–24</span>
@@ -74,7 +74,8 @@
     <div class="about-body">
       <p>Coloured areas are permanent pastures where recent and forecast weather has suited the
         <em>field mushroom</em> (<em>Agaricus campestris</em>). Pick a day with the slider: the score for a day
-        uses the weather of the ten days ending on that day.</p>
+        uses the weather of the ten days ending on that day. Switch to <b>Rain, 60 days</b> at the top to see
+        how much rain has fallen over the last two months instead.</p>
       <h3>How the score works</h3>
       <ul id="model-list"></ul>
       <p class="muted small">The score is a relative index, not a probability. Weather is calculated for a grid of
@@ -82,6 +83,13 @@
         station measurements. Rain forecasts more than about five days ahead are uncertain. The rules were
         checked against 233 dated finds in Skåne (GBIF/Artportalen); they rank find days only slightly above
         nearby days, so treat the map as a nudge, not a promise.</p>
+      <h3>Rain, 60 days</h3>
+      <div id="rain-about"></div>
+      <p class="muted small">Checked against 249 dated finds in Skåne (GBIF/Artportalen, 2005–2026, rain at the
+        nearest SMHI station): finds came after more rain than normal in the previous 2–4 weeks, but the 60-day
+        total before a find was not higher than normal (median 93&nbsp;% of normal), and years with a wet late
+        summer tended to have fewer reported finds, not more. Finds were most common when a drier than normal
+        spell was followed by rain. So dark blue means wet ground, not a better place to look.</p>
       <h3>Before you pick</h3>
       <p>Field mushrooms can be confused with toxic species, including the yellow-staining mushroom
         (<em>Agaricus xanthodermus</em>) and deadly white amanitas. Only eat mushrooms you have identified with certainty.</p>
@@ -94,6 +102,6 @@
   </dialog>
 
   <script src="vendor/leaflet/leaflet.js"></script>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

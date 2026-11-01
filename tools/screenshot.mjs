@@ -45,6 +45,23 @@ for (const [name, engine] of Object.entries({ webkit, chromium })) {
     await pause(5000);
     await page.screenshot({ path: `${out}/${name}-4-pastures-day3.png` });
 
+    // The "Rain, 60 days" view
+    await page.click('#view-rain');
+    await pause(1500);
+    await page.screenshot({ path: `${out}/${name}-5-rain-pastures-day3.png` });
+    await page.evaluate(() => { window.__map.setView([55.95, 13.55], 8, { animate: false }); });
+    await pause(3000);
+    await page.screenshot({ path: `${out}/${name}-6-rain-overview-day3.png` });
+    for (let i = 0; i < 3; i++) await page.click('#prev');
+    await page.evaluate(() => { window.__map.setView([55.70, 13.19], 10, { animate: false }); });
+    await pause(3000);
+    const box = await page.locator('#map').boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await pause(1200);
+    await page.screenshot({ path: `${out}/${name}-7-rain-popup-today.png` });
+    await page.click('#view-score');
+    await pause(800);
+
     log.push(`${name}: ${await page.evaluate(() => document.getElementById('status').textContent)}`);
   } catch (err) {
     log.push(`${name} FAILED: ${err && err.stack ? err.stack.split('\n').slice(0, 4).join(' | ') : err}`);

@@ -71,13 +71,19 @@ button { font: inherit; color: inherit; }
   pointer-events: none;
 }
 .topbar > * { pointer-events: auto; }
-.brand {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--panel); color: var(--ink);
-  border-radius: 999px; padding: 6px 12px 6px 7px;
-  box-shadow: var(--shadow); font-weight: 600; font-size: 14px;
+/* Map switch: Suitability | Rain, 60 days */
+.views {
+  display: flex; gap: 2px; padding: 3px; min-width: 0;
+  background: var(--panel); border-radius: 999px; box-shadow: var(--shadow);
 }
-.brand img { border-radius: 6px; }
+.view-btn {
+  border: 0; background: transparent; color: var(--ink-2); cursor: pointer;
+  border-radius: 999px; padding: 0 12px; height: 36px;
+  font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.view-btn:hover { background: var(--btn-hover); }
+.view-btn[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.view-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .actions { display: flex; gap: 8px; }
 .icon-btn {
   width: 42px; height: 42px; border: 0; border-radius: 999px;
@@ -177,4 +183,11 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 
 @media (min-width: 720px) {
   .sheet { padding-left: max(14px, calc(50vw - 330px)); padding-right: max(14px, calc(50vw - 330px)); }
+}
+
+/* Small phones (320-360 px wide): keep the map switch clear of the buttons */
+@media (max-width: 360px) {
+  .topbar { gap: 6px; padding-left: 8px; padding-right: 8px; }
+  .actions { gap: 6px; }
+  .view-btn { padding: 0 8px; font-size: 13px; }
 }

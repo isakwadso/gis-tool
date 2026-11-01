@@ -1,5 +1,6 @@
 # Written by the publish workflow on every run, never committed
 site/data/scores.json
+site/data/rain_history.json
 
 __pycache__/
 *.pyc

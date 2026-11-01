@@ -14,13 +14,22 @@
   const LABELS = ['Low', 'Fair', 'Good', 'Very good'];
   const ZERO = { fill: '#acaca7', seen: '#bebebb', stroke: '#6f6f6b', label: 'Not suitable' };
   const NONE = { fill: '#bdbdb9', seen: '#dcdcda', stroke: '#8a8a86', label: 'No score' };
+  // "Rain, 60 days" view: single-hue blue, light (little rain) -> dark (much rain), six
+  // classes whose limits come from config.json -> rain_total.classes_mm. Drawn at 0.8 so the
+  // dark end stays blue over the grey map; RAIN_SEEN is the blended colour (even steps in
+  // lightness, >= 8 OKLab dE between neighbours).
+  const RAIN_OPACITY = 0.8;
+  const RAIN_FILL = ['#8bc1fe', '#4da1fe', '#2481e5', '#0462c3', '#00458f', '#002957'];
+  const RAIN_SEEN = ['#9dc8f9', '#6caff9', '#4b95e5', '#317cca', '#2e65a0', '#2e4f73'];
+  const RAIN_STROKE = ['#4da1fe', '#2481e5', '#0462c3', '#00458f', '#002957', '#00142b'];
+  const DEFAULT_RAIN_CLASSES = [60, 90, 120, 160, 200];
   const PASTURE_MIN_ZOOM = 12;
   const TZ = 'Europe/Stockholm';
 
   const $ = (id) => document.getElementById(id);
   const state = {
     cells: null, scores: null, grid: null, q: 1e5,
-    cellRows: new Map(), day: 0, todayIdx: -1,
+    cellRows: new Map(), day: 0, todayIdx: -1, view: 'score',
     chunks: new Map(), cellLayer: null, pastureGroup: null, locateLayer: null,
   };
 
@@ -30,6 +39,8 @@
   const fmtTime = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short', timeZone: TZ });
   const todayISO = () => new Intl.DateTimeFormat('sv-SE', { timeZone: TZ }).format(new Date());
   const asDate = (iso) => new Date(iso + 'T12:00:00Z');
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
+    'October', 'November', 'December'];
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   function bin(s) {
@@ -45,8 +56,46 @@
   }
   function cellData(cid, day) {
     const c = state.scores && state.scores.cells && state.scores.cells[cid];
-    if (!c) return { s: null, r: null, t: null, f: null, d: null };
-    return { s: c[0][day], r: c[1][day], t: c[2][day], f: c[3][day], d: c[4] ? c[4][day] : null };
+    if (!c) return { s: null, r: null, t: null, f: null, d: null, a: null, af: null };
+    return { s: c[0][day], r: c[1][day], t: c[2][day], f: c[3][day], d: c[4] ? c[4][day] : null,
+      a: c[5] ? c[5][day] : null, af: c[6] ? c[6][day] : null };
+  }
+  // ---------- rain view ----------
+  function rainInfo() {
+    const rt = state.scores && state.scores.rainTotal;
+    return {
+      days: rt ? rt.days : 60,
+      classes: rt && Array.isArray(rt.classes_mm) && rt.classes_mm.length === RAIN_FILL.length - 1
+        ? rt.classes_mm : DEFAULT_RAIN_CLASSES,
+      normal: rt ? rt.normal_mm : null,
+      normalSource: rt ? rt.normal_source : null,
+      classesNote: rt ? rt.classes_note : null,
+    };
+  }
+  function rainBin(mm) {
+    const c = rainInfo().classes;
+    let b = 0;
+    while (b < c.length && mm >= c[b]) b++;
+    return b;
+  }
+  function rainLabel(b) {
+    const c = rainInfo().classes;
+    if (b === 0) return `under ${c[0]} mm`;
+    if (b === c.length) return `${c[c.length - 1]} mm or more`;
+    return `${c[b - 1]}–${c[b] - 1} mm`;
+  }
+  function rainLook(mm) {
+    if (mm == null) return { ...NONE, label: 'No rain data' };
+    const b = rainBin(mm);
+    return { fill: RAIN_FILL[b], seen: RAIN_SEEN[b], stroke: RAIN_STROKE[b], label: rainLabel(b) };
+  }
+  // Colour, label and fill opacity of a square or pasture in the current view.
+  function styleFor(cid) {
+    const v = cellData(cid, state.day);
+    if (state.view === 'rain') {
+      return { lk: rainLook(v.a), empty: v.a == null, opacity: RAIN_OPACITY };
+    }
+    return { lk: look(v.s), empty: v.s == null, opacity: FILL_OPACITY };
   }
   // Days of weather, ending on the scored day, that the model uses.
   function modelDays(m) {
@@ -63,6 +112,13 @@
     return base;
   }
   function dayNote(idx) {
+    if (state.view === 'rain') {
+      const n = rainInfo().days;
+      if (state.todayIdx < 0) return `Rain over the ${n} days ending this day`;
+      const fc = Math.min(n, idx - state.todayIdx + 1);
+      const past = n - fc;
+      return `${past} past day${past === 1 ? '' : 's'} + ${fc} forecast day${fc === 1 ? '' : 's'}`;
+    }
     const n = modelDays(state.scores.model);
     if (!state.scores.inSeason[idx]) return 'Out of season (scores July–November only)';
     if (state.todayIdx < 0) return '';
@@ -155,10 +211,9 @@
 
   // ---------- weather cells (overview) ----------
   function cellStyle(cid) {
-    const { s } = cellData(cid, state.day);
-    const lk = look(s);
+    const { lk, empty, opacity } = styleFor(cid);
     return { renderer, color: '#ffffff', weight: 0.8, opacity: 0.55, fillColor: lk.fill,
-      fillOpacity: s == null ? 0.3 : FILL_OPACITY, dashArray: null };
+      fillOpacity: empty ? 0.3 : opacity, dashArray: null };
   }
   function buildCells() {
     const group = L.layerGroup();
@@ -175,10 +230,9 @@
 
   // ---------- pastures (zoomed in) ----------
   function pastureStyle(cid) {
-    const { s } = cellData(cid, state.day);
-    const lk = look(s);
+    const { lk, empty, opacity } = styleFor(cid);
     return { renderer, color: lk.stroke, weight: 1.5, opacity: 1, fillColor: lk.fill,
-      fillOpacity: s == null ? 0.3 : FILL_OPACITY, dashArray: s == null ? '3 3' : null };
+      fillOpacity: empty ? 0.3 : opacity, dashArray: empty ? '3 3' : null };
   }
   function decodeRing(r, q) {
     let x = r[0], y = r[1];
@@ -209,7 +263,7 @@
   function refreshPastures() {
     if (!state.cells) return;
     const zoomedIn = map.getZoom() >= PASTURE_MIN_ZOOM;
-    $('zoom-hint').hidden = zoomedIn || map.getZoom() < 10;
+    $('zoom-hint').hidden = zoomedIn || map.getZoom() < 10 || state.popupOpen;
     if (!zoomedIn) {
       if (state.pastureGroup && map.hasLayer(state.pastureGroup)) map.removeLayer(state.pastureGroup);
       if (state.cellLayer && !map.hasLayer(state.cellLayer)) map.addLayer(state.cellLayer);
@@ -236,7 +290,27 @@
   }
 
   // ---------- popups ----------
+  // Keep popups clear of the buttons along the top when the map pans to show them.
+  const POPUP = { maxWidth: 280, autoPanPaddingTopLeft: L.point(10, 70), autoPanPaddingBottomRight: L.point(10, 10) };
+  function rainTable(cid) {
+    const { s, a, af } = cellData(cid, state.day);
+    const info = rainInfo();
+    const lk = rainLook(a);
+    const rows = [];
+    if (a != null && af > 0) rows.push(`<tr><td>Of which forecast</td><td>${af} mm</td></tr>`);
+    const month = Number(state.scores.dates[state.day].slice(5, 7));
+    const normal = info.normal && info.normal[String(month)];
+    if (a != null && normal) {
+      rows.push(`<tr><td>Normal for ${MONTHS[month - 1]}</td><td>${normal} mm</td></tr>`);
+      rows.push(`<tr><td>Compared with normal</td><td>${Math.round((100 * a) / normal)}%</td></tr>`);
+    }
+    rows.push(`<tr><td>Suitability this day</td><td>${s == null ? '—' : `${s}%`}</td></tr>`);
+    return `<div class="pop-title"><i class="sw" style="--c:${lk.seen};--s:${lk.stroke}"></i>Rain, ${info.days} days · ${a == null ? '—' : `${a} mm`}</div>
+      <div class="pop-date">${esc(dayName(state.day))}</div>
+      <table>${rows.join('')}</table>`;
+  }
   function weatherTable(cid) {
+    if (state.view === 'rain') return rainTable(cid);
     const { s, r, t, f, d } = cellData(cid, state.day);
     const lk = look(s);
     const score = s == null ? '—' : `${s}%`;
@@ -259,14 +333,14 @@
     const html = `<div class="pop">${weatherTable(layer.info.cid)}
       <div class="foot">Pasture block ${esc(layer.info.bid)} · ${layer.info.ha.toFixed(1)} ha</div>
       <div class="links"><a href="${mapsLink(c.lat, c.lng)}" target="_blank" rel="noopener">Open in maps</a></div></div>`;
-    L.popup({ maxWidth: 280 }).setLatLng(latlng).setContent(html).openOn(map);
+    L.popup(POPUP).setLatLng(latlng).setContent(html).openOn(map);
   }
   function openCellPopup(cid, latlng) {
     const row = state.cellRows.get(cid);
     const html = `<div class="pop">${weatherTable(cid)}
       <div class="foot">Weather square (~5 km) with ${row[4]} pasture block${row[4] === 1 ? '' : 's'}, ${Math.round(row[3])} ha</div>
       <div class="links"><button class="linklike" type="button" data-zoom="${cid}">Zoom in to pastures</button></div></div>`;
-    const p = L.popup({ maxWidth: 280 }).setLatLng(latlng).setContent(html).openOn(map);
+    const p = L.popup(POPUP).setLatLng(latlng).setContent(html).openOn(map);
     const btn = p.getElement().querySelector('[data-zoom]');
     btn.addEventListener('click', () => { map.closePopup(); map.flyTo(cellBounds(cid).getCenter(), 13); });
   }
@@ -285,7 +359,12 @@
     $('next').disabled = idx >= max;
     document.querySelectorAll('#ticks span').forEach((el) => el.classList.toggle('sel', Number(el.dataset.i) === idx));
     const banner = $('banner');
-    if (sc.status === 'out-of-season' || !sc.inSeason[idx]) {
+    if (state.view === 'rain' && sc.status !== 'missing' && !sc.rainTotal) {
+      banner.textContent = 'The 60-day rain totals appear after the next weather update.';
+      banner.hidden = false;
+    } else if (state.view === 'rain') {
+      banner.hidden = true;
+    } else if (sc.status === 'out-of-season' || !sc.inSeason[idx]) {
       banner.textContent = 'Out of season: the map scores July–November only. Pastures are shown without a score.';
       banner.hidden = false;
     } else {
@@ -304,6 +383,42 @@
       s.textContent = fmtInitial.format(asDate(state.scores.dates[i]));
       t.appendChild(s);
     }
+  }
+
+  // ---------- view switch and legend ----------
+  function legendHTML() {
+    if (state.view === 'rain') {
+      const keys = RAIN_FILL.map((_, b) => {
+        const c = rainInfo().classes;
+        const txt = b === 0 ? `&lt;${c[0]}` : b === c.length ? `${c[c.length - 1]}+ mm` : `${c[b - 1]}–${c[b]}`;
+        return `<span class="key"><i class="sw" style="--c:${RAIN_SEEN[b]};--s:${RAIN_STROKE[b]}"></i>${txt}</span>`;
+      });
+      return `<span class="legend-title small muted">Rain, ${rainInfo().days} days</span>${keys.join('')}
+        <span class="key"><i class="sw sw-none"></i>no data</span>`;
+    }
+    const keys = RAMP.map((_, b) => {
+      const txt = ['1–24', '25–49', '50–74', '75–100 %'][b];
+      return `<span class="key"><i class="sw" style="--c:${RAMP_SEEN[b]};--s:${RAMP_STROKE[b]}"></i>${txt}</span>`;
+    });
+    return `<span class="legend-title small muted">Suitability</span>
+      <span class="key"><i class="sw sw-zero"></i>0</span>${keys.join('')}
+      <span class="key"><i class="sw sw-none"></i>no score</span>`;
+  }
+  function setView(view, remember = true) {
+    state.view = view === 'rain' ? 'rain' : 'score';
+    $('view-score').setAttribute('aria-selected', String(state.view === 'score'));
+    $('view-rain').setAttribute('aria-selected', String(state.view === 'rain'));
+    $('legend').innerHTML = legendHTML();
+    document.title = state.view === 'rain' ? 'Rain, 60 days · Field mushroom map' : 'Field mushroom map';
+    if (remember) {
+      try { localStorage.setItem('view', state.view); } catch (e) { /* private mode */ }
+    }
+    if (state.scores) setDay(state.day);
+  }
+  function initialView() {
+    const q = new URLSearchParams(location.search).get('view');
+    if (q === 'rain' || q === 'score') return q;
+    try { return localStorage.getItem('view') || 'score'; } catch (e) { return 'score'; }
   }
 
   // ---------- about dialog ----------
@@ -336,6 +451,16 @@
       ];
       items.forEach((h) => { const li = document.createElement('li'); li.innerHTML = h; list.appendChild(li); });
     }
+    const ra = $('rain-about');
+    const info = rainInfo();
+    const c = info.classes;
+    ra.innerHTML = `<p>Total rain over the ${info.days} days ending on the chosen day, per ~5 km weather square.
+      Past days come from a daily record of the same weather model that the map keeps; from today on the
+      forecast is added, so later days on the slider are less certain. It is shown on its own and is not
+      part of the suitability score.</p>
+      <p>Colour classes: under ${c[0]} mm, ${c.slice(0, -1).map((v, i) => `${v}–${c[i + 1]}`).join(', ')} and
+      ${c[c.length - 1]} mm or more. ${info.classesNote ? esc(info.classesNote) : ''}</p>
+      ${info.normalSource ? `<p class="muted small">"Normal" in the popup is the ${info.days}-day rain for the month, ${esc(info.normalSource)}.</p>` : ''}`;
     const dl = $('data-list');
     dl.innerHTML = '';
     const rows = [];
@@ -347,6 +472,7 @@
       const kept = s.history ? ` that were pasture every year ${esc(s.history.years[0])}–${esc(s.history.years[1])}` : '';
       rows.push(`Pasture: <a href="${esc(s.url)}" rel="noopener">Jordbruksverket</a>, farm blocks ${esc(s.year)} (${esc(s.types.join(', '))}), ${state.cells.n_blocks.toLocaleString('en-GB')} blocks in ${esc(s.region)}${kept}.`);
     }
+    if (rainInfo().normal) rows.push('Rain normals: <a href="https://www.smhi.se/" rel="noopener">SMHI</a> open data, CC BY 4.0.');
     rows.push('Base map: © <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a> contributors.');
     rows.forEach((h) => { const li = document.createElement('li'); li.innerHTML = h; dl.appendChild(li); });
   }
@@ -371,6 +497,9 @@
   // ---------- startup ----------
   async function start() {
     $('locate').addEventListener('click', locate);
+    $('view-score').addEventListener('click', () => setView('score'));
+    $('view-rain').addEventListener('click', () => setView('rain'));
+    setView(initialView(), false);
     $('info').addEventListener('click', () => { fillAbout(); $('about').showModal(); });
     $('prev').addEventListener('click', () => setDay(state.day - 1));
     $('next').addEventListener('click', () => setDay(state.day + 1));
@@ -392,7 +521,6 @@
     state.cells = cellsRes.value;
     state.grid = state.cells.grid;
     state.q = state.cells.q || 1e5;
-    if (state.cells.source && state.cells.source.region) $('region').textContent = state.cells.source.region;
 
     state.scores = scoresRes.status === 'fulfilled' ? scoresRes.value : null;
     if (!state.scores || !state.scores.dates) {
@@ -410,8 +538,12 @@
     buildCells();
     map.fitBounds(L.latLngBounds(state.cells.cells.map((r) => cellBounds(r[0]).getCenter())).pad(0.05));
     map.on('zoomend moveend', refreshPastures);
+    // The zoom hint would cover the bottom of an open popup
+    map.on('popupopen', () => { state.popupOpen = true; $('zoom-hint').hidden = true; });
+    map.on('popupclose', () => { state.popupOpen = false; refreshPastures(); });
     refreshPastures();
     if (placesRes.status === 'fulfilled') initPlaces(placesRes.value);
+    $('legend').innerHTML = legendHTML();
     setDay(min);
 
     const parts = [];

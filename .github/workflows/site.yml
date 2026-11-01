@@ -1,7 +1,8 @@
 name: Forecast and publish
 
-# Fetches weather for every pasture grid cell, computes the scores for today and
-# the next 10 days, and publishes the site to GitHub Pages. Runs every 3 hours,
+# Fetches weather for every pasture grid cell, computes the scores and the 60-day
+# rain totals for today and the next 10 days, and publishes the site to GitHub
+# Pages. Runs every 3 hours (out of season the weather is fetched once a day),
 # after the pasture layer is rebuilt, when the site changes, or manually.
 
 on:
@@ -35,7 +36,9 @@ jobs:
   build:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    outputs:
+      publish: ${{ steps.scores.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,17 +51,26 @@ jobs:
       - name: Test the scoring model
         run: python -m unittest discover -s scripts -p "test_*.py"
 
-      - name: Fetch weather and compute scores
+      - id: pages
+        uses: actions/configure-pages@v6
+
+      # Reads the rain history the previous run published (PAGES_URL), so only new
+      # days are fetched. Out of season, scheduled runs after the first of the day
+      # stop here (publish=false) and the live site is left as it is.
+      - id: scores
+        name: Fetch weather and compute scores
+        env:
+          PAGES_URL: ${{ steps.pages.outputs.base_url }}
         run: python scripts/build_scores.py
 
-      - uses: actions/configure-pages@v6
-
-      - uses: actions/upload-pages-artifact@v5
+      - if: steps.scores.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
   deploy:
     needs: build
+    if: needs.build.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
