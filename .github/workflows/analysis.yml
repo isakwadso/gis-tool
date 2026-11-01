@@ -1,0 +1,53 @@
+name: Rain analysis
+
+# One-off analyses of rain against dated finds (tools/rain_analysis.py). Runs when
+# the script changes or manually; results are pushed to the "analysis" branch.
+# Uses SMHI and GBIF open data; the small Open-Meteo check (~160 calls) runs once
+# and is reused from the analysis branch afterwards.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tools/rain_analysis.py
+      - .github/workflows/analysis.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analysis
+  cancel-in-progress: true
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write   # to push the analysis branch
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run the analysis
+        shell: bash
+        run: |
+          mkdir -p out
+          git fetch -q origin analysis 2>/dev/null && git show origin/analysis:out/openmeteo.json > prev_openmeteo.json 2>/dev/null || rm -f prev_openmeteo.json
+          python tools/rain_analysis.py out prev_openmeteo.json 2>&1 | tee out/log.txt
+          { echo '```'; cat out/log.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push to the analysis branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q --orphan analysis-new
+          git rm -r -q --cached .
+          git add -f out
+          git commit -q -m "Rain analysis of ${GITHUB_SHA::7}"
+          git push -q -f origin HEAD:analysis
