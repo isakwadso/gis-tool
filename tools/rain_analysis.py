@@ -368,6 +368,7 @@ def main():
 
     # ---- climatology of 60-day totals (for the colour classes)
     clim_all, clim_month, clim_year = [], defaultdict(list), []
+    clim_every = defaultdict(list)
     used = 0
     for st in stations:
         s = series[st["id"]]
@@ -383,6 +384,12 @@ def main():
             if len(yr_vals) >= 140:
                 yrs += 1
                 vals_st += yr_vals
+            dd = date(y, 1, 1)
+            while dd.year == y:
+                v = s.total(dd, MAIN)
+                if v is not None:
+                    clim_every[(st["id"], dd.month)].append(v)
+                dd += timedelta(days=1)
             ys = [s.total(date(y, m, 15), MAIN) for m in range(1, 13)]
             if all(v is not None for v in ys):
                 clim_year += ys
@@ -397,6 +404,9 @@ def main():
         "percentiles_mm": {str(q): round(pct(clim_all, q), 1) for q in qs},
         "by_month_end": {str(m): {str(q): round(pct(v, q), 1) for q in (0.1, 0.25, 0.5, 0.75, 0.9)}
                          for m, v in sorted(clim_month.items())},
+        "median_by_month_all_year": {
+            str(m): round(statistics.median(v for (sid, mm), vals in clim_every.items() if mm == m
+                                            and len(vals) >= 20 * 28 for v in vals), 1) for m in range(1, 13)},
         "whole_year_mid_month": {str(q): round(pct(clim_year, q), 1) for q in qs} if clim_year else None,
     }
     log("Climatology 60 days (Jul-Nov ends):", res["climatology_60d"]["percentiles_mm"])
@@ -404,6 +414,9 @@ def main():
     # ---- Open-Meteo vs station
     try:
         res["open_meteo_check"] = open_meteo_check(stations, series, prev_om)
+        st_ = res["open_meteo_check"].get("stations") or []
+        if st_:
+            res["open_meteo_check"]["mean_ratio"] = round(mean([x["open_meteo_over_station"] for x in st_]), 3)
         (out_dir / "openmeteo.json").write_text(json.dumps(res["open_meteo_check"], indent=1))
     except Exception as e:  # noqa: BLE001
         log(f"Open-Meteo check failed: {e}")
@@ -448,6 +461,18 @@ def main():
         x = s.total(d0, 60, skip_last=10)
         oth = [s.total(e, 60, skip_last=10) for e in others_y]
         row["r11_60"] = rank(x, oth)
+        # Exploratory: last 10 days wetter than normal AFTER days 11-60 drier than normal.
+        # Expected share = how often that combination happened in the other years.
+        o10 = [s.total(e, 10) for e in others_y]
+        m10, m60 = statistics.median(o10), statistics.median(oth)
+        row["dry_then_wet"] = int(s.total(d0, 10) > m10 and x < m60)
+        # each other year judged against the remaining years, as the find year is judged against all of them
+        exp = []
+        for j, (a, b) in enumerate(zip(o10, oth)):
+            r10 = o10[:j] + o10[j + 1:]
+            r60 = oth[:j] + oth[j + 1:]
+            exp.append(1 if a > statistics.median(r10) and b < statistics.median(r60) else 0)
+        row["dry_then_wet_expected"] = round(mean(exp), 3)
         # within the season: the find day against 20-40 days before and after, same year
         ctrl = [s.total(d0 + timedelta(days=o), MAIN) for o in list(range(-40, -19)) + list(range(20, 41))]
         ctrl = [c for c in ctrl if c is not None]
@@ -474,6 +499,14 @@ def main():
     res["across_years"] = {f"{w}d": summarise(f"r{w}") for w in WINDOWS}
     res["across_years"]["days 11-60 only"] = summarise("r11_60")
     res["within_season_60d"] = summarise("r60_within")
+    by_year = defaultdict(list)
+    for r in rows:
+        by_year[int(r["date"][:4])].append(r["dry_then_wet"] - r["dry_then_wet_expected"])
+    lo, hi = cluster_ci(by_year)
+    res["dry_then_wet"] = {"observed": round(mean([r["dry_then_wet"] for r in rows]), 3),
+                           "expected": round(mean([r["dry_then_wet_expected"] for r in rows]), 3),
+                           "difference_ci95": [round(lo, 3), round(hi, 3)]}
+    log(f"  dry then wet (exploratory): {res['dry_then_wet']}")
     for k, v in res["across_years"].items():
         log(f"  across years, {k}: mean rank {v['mean_rank']:.3f} (95% CI {v['ci95'][0]:.3f}-{v['ci95'][1]:.3f}), n={v['n']}")
     log(f"  within season, 60d: {res['within_season_60d']}")
